@@ -549,7 +549,12 @@ export default function AppSimulator({
   const [dbSpreadsheetName, setDbSpreadsheetName] = useState<string>(() => {
     const syncStatus = localStorage.getItem('pams_db_sync_status');
     if (syncStatus === 'Disconnected') return 'Belum Terhubung';
-    return localStorage.getItem('pams_db_sheet_name') || 'DB_kpspmas siaga';
+    const saved = localStorage.getItem('pams_db_sheet_name');
+    if (!saved || saved === 'PAMSDIGI Spreadsheet' || saved === 'DB_kpspmas siaga') {
+      localStorage.setItem('pams_db_sheet_name', 'Db_pamsdigi');
+      return 'Db_pamsdigi';
+    }
+    return saved;
   });
   const [showResetDbModal, setShowResetDbModal] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(() => getOfflineQueueCount());
@@ -813,21 +818,23 @@ RUNTIME DIAGNOSTIC
 
       const lastConn = new Date().toLocaleString('id-ID');
 
+      const realSheetName = (responseData?.spreadsheetName && responseData.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? responseData.spreadsheetName : 'Db_pamsdigi';
+
       await saveGlobalDbConfig({
         gasUrl: cleanUrl,
-        spreadsheetName: 'PAMSDIGI Spreadsheet',
+        spreadsheetName: realSheetName,
         lastConnected: lastConn,
         spreadsheetId: ''
       });
 
       setDbGasUrl(cleanUrl);
       setDbSpreadsheetId('');
-      setDbSpreadsheetName('PAMSDIGI Spreadsheet');
+      setDbSpreadsheetName(realSheetName);
       setDbLastConnected(lastConn);
       setDbSyncStatus('Connected');
 
       localStorage.setItem('pams_google_gas_url', cleanUrl);
-      localStorage.setItem('pams_db_sheet_name', 'PAMSDIGI Spreadsheet');
+      localStorage.setItem('pams_db_sheet_name', realSheetName);
       localStorage.setItem('pams_db_sync_status', 'Connected');
       localStorage.setItem('pams_db_last_connected', lastConn);
       
@@ -1090,7 +1097,8 @@ RUNTIME DIAGNOSTIC
         setDbCheckSteps([]);
       } else {
         setDbGasUrl(liveConfig.gasUrl);
-        setDbSpreadsheetName(liveConfig.spreadsheetName || 'PAMSDIGI Spreadsheet');
+        const resSheetName = (liveConfig.spreadsheetName && liveConfig.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? liveConfig.spreadsheetName : 'Db_pamsdigi';
+        setDbSpreadsheetName(resSheetName);
         setDbSyncStatus('Connected');
         setDbLastConnected(liveConfig.lastConnected || new Date().toLocaleString('id-ID'));
       }
@@ -1213,7 +1221,8 @@ RUNTIME DIAGNOSTIC
     fetchGasConfig().then(cfg => {
       if (cfg.syncStatus === 'Connected' && cfg.gasUrl) {
         setDbGasUrl(cfg.gasUrl);
-        setDbSpreadsheetName(cfg.spreadsheetName || 'PAMSDIGI Spreadsheet');
+        const resSheetName = (cfg.spreadsheetName && cfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? cfg.spreadsheetName : 'Db_pamsdigi';
+        setDbSpreadsheetName(resSheetName);
         setDbSyncStatus('Connected');
         setDbLastConnected(cfg.lastConnected || new Date().toLocaleString('id-ID'));
         if (cfg.spreadsheetId) setDbSpreadsheetId(cfg.spreadsheetId);
@@ -1235,7 +1244,8 @@ RUNTIME DIAGNOSTIC
         if (cfg.syncStatus === 'Connected' && cfg.gasUrl) {
           if (dbSyncStatus === 'Disconnected' || !dbGasUrl) {
             setDbGasUrl(cfg.gasUrl);
-            setDbSpreadsheetName(cfg.spreadsheetName || 'PAMSDIGI Spreadsheet');
+            const resSheetName = (cfg.spreadsheetName && cfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? cfg.spreadsheetName : 'Db_pamsdigi';
+            setDbSpreadsheetName(resSheetName);
             setDbSyncStatus('Connected');
             setDbLastConnected(cfg.lastConnected || 'Belum Terhubung');
           }
@@ -1284,7 +1294,8 @@ RUNTIME DIAGNOSTIC
         if (liveCfg.syncStatus === 'Connected' && liveCfg.gasUrl) {
           if (dbSyncStatus === 'Disconnected' || dbGasUrl !== liveCfg.gasUrl) {
             setDbGasUrl(liveCfg.gasUrl);
-            setDbSpreadsheetName(liveCfg.spreadsheetName || 'PAMSDIGI Spreadsheet');
+            const resSheetName = (liveCfg.spreadsheetName && liveCfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? liveCfg.spreadsheetName : 'Db_pamsdigi';
+            setDbSpreadsheetName(resSheetName);
             setDbSyncStatus('Connected');
             setDbLastConnected(liveCfg.lastConnected || new Date().toLocaleString('id-ID'));
             addLog('info', 'Sistem terhubung ke database global terbaru.');
@@ -1436,6 +1447,9 @@ RUNTIME DIAGNOSTIC
           if (session.loginDateWib && session.loginDateWib !== todayWib) {
             // New day in Jakarta timezone! Auto logout.
             localStorage.removeItem('pamsdigi_session');
+            setUsername('');
+            setPassword('');
+            setShowPassword(false);
             setCurrentUser(null);
             setCurrentView('login');
             showToast('Sesi kedaluwarsa (Auto Logout harian 00:00 WIB)', 'error');
@@ -1810,6 +1824,9 @@ RUNTIME DIAGNOSTIC
             loginDateWib: todayWib
           }));
           setCurrentUser(response);
+          setUsername('');
+          setPassword('');
+          setShowPassword(false);
           showToast(`Selamat Datang ${response.nama}!`, 'success');
           const validViews = ['dashboard', 'pelanggan', 'catat-meter', 'tagihan', 'keuangan', 'laporan', 'master-data', 'pengaturan', 'spreadsheet', 'code', 'guide'];
           const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '') : '';
@@ -2240,6 +2257,10 @@ RUNTIME DIAGNOSTIC
     if (typeof window !== 'undefined' && window.location.hash) {
       window.location.hash = '';
     }
+    // Kosongkan form login (username & password) agar tidak tersisa saat logout
+    setUsername('');
+    setPassword('');
+    setShowPassword(false);
     setCurrentUser(null);
     setCurrentView('login');
     showToast('Logout Berhasil!', 'success');
@@ -3857,6 +3878,7 @@ RUNTIME DIAGNOSTIC
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required 
+                  autoComplete="off"
                   className="w-full bg-slate-50 pl-11 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition" 
                   placeholder="Masukkan username"
                 />
@@ -3875,6 +3897,7 @@ RUNTIME DIAGNOSTIC
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required 
+                  autoComplete="new-password"
                   className="w-full bg-slate-50 pl-11 pr-11 py-2.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition" 
                   placeholder="••••••••"
                 />
@@ -4276,6 +4299,7 @@ RUNTIME DIAGNOSTIC
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
                           required 
+                          autoComplete="off"
                           className="w-full bg-slate-50 pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-1.5 focus:ring-blue-500 outline-none transition" 
                           placeholder="Masukkan username"
                         />
@@ -4293,6 +4317,7 @@ RUNTIME DIAGNOSTIC
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required 
+                          autoComplete="new-password"
                           className="w-full bg-slate-50 pl-9 pr-9 py-2 rounded-xl border border-slate-200 text-xs focus:ring-1.5 focus:ring-blue-500 outline-none transition" 
                           placeholder="••••••••"
                         />
@@ -8361,13 +8386,13 @@ RUNTIME DIAGNOSTIC
                         <div className="flex items-center gap-1.5 border-b border-slate-850 pb-1.5">
                           <Link2 size={12} className="text-amber-400" />
                           <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider block">
-                            DATABASE AKTIF (SHEETS LIVE INFO)
+                            DATABASE AKTIF
                           </span>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs text-left">
                           <div>
-                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Nama Spreadsheet:</span>
+                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Nama Database</span>
                             <span className="font-extrabold text-slate-100 block mt-0.5">{dbSpreadsheetName}</span>
                           </div>
 
@@ -8417,7 +8442,7 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.0</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.1</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
@@ -8434,8 +8459,12 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.0)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.1)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[LIVE DYNAMIC SPREADSHEET NAME (Db_pamsdigi)]</strong> Memastikan nama database langsung membaca nama live file Google Spreadsheet (<code>Db_pamsdigi</code>) secara dinamis melalui <code>db.getName()</code> dan menyimpannya ke sheet <code>Konfigurasi</code>.</span>
+                                </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[SINGLE SOURCE OF TRUTH SHEET KONFIGURASI]</strong> URL Apps Script, Spreadsheet ID, dan status sinkronisasi global kini disimpan langsung ke sheet <code>Konfigurasi</code> di Google Spreadsheet sehingga semua perangkat langsung sinkron tanpa config manual.</span>
@@ -8553,18 +8582,18 @@ RUNTIME DIAGNOSTIC
                         </div>
                       </div>
 
-                      {/* Gambar 3: DATABASE AKTIF (SHEETS LIVE INFO) */}
+                      {/* Gambar 3: DATABASE AKTIF */}
                       <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-md space-y-3">
                         <div className="flex items-center gap-1.5 border-b border-slate-850 pb-1.5">
                           <Link2 size={12} className="text-amber-400" />
                           <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider block">
-                            DATABASE AKTIF (SHEETS LIVE INFO)
+                            DATABASE AKTIF
                           </span>
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs text-left">
                           <div>
-                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Nama Spreadsheet:</span>
+                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Nama Database</span>
                             <span className="font-extrabold text-slate-100 block mt-0.5">{dbSpreadsheetName}</span>
                           </div>
 

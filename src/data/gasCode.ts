@@ -8,11 +8,12 @@ export const gasFiles: GASFile[] = [
     content: `/**
  * PAMSDIGI - PAMS Digital Indonesia
  * REST API & Google Spreadsheet Database Integration
- * Version: v2.3.0
+ * Version: v2.3.1
  * Last Updated: 05 September 2026
- * Status: Production Ready - Single Source of Truth & Konfigurasi Sheet
+ * Status: Production Ready - Live Spreadsheet Database Name Sync
  * 
- * Change Log v2.3.0:
+ * Change Log v2.3.1:
+ * - [NEW] Live Dynamic Spreadsheet Name: Memastikan nama database langsung membaca nama live file spreadsheet Google Drive (Db_pamsdigi) secara dinamis melalui db.getName() dan menyimpannya ke sheet Konfigurasi.
  * - [NEW] Konfigurasi Sheet as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
  * - [NEW] Self-Provisioning Non-Destructive: Otomatis mendeteksi dan membuat seluruh sheet tabel yang belum ada di spreadsheet kosong (termasuk Konfigurasi) tanpa menghapus sheet yang sudah ada.
  * - [NEW] Default Admin Seeding: Otomatis mengisi akun admin default (username: admin, password: admin) jika sheet Users baru dibuat.
@@ -28,7 +29,7 @@ export const gasFiles: GASFile[] = [
  * 6. Klik Terapkan (Deploy) -> Penerapan Baru (New Deployment).
  * 7. Pilih Jenis: Aplikasi Web (Web App).
  * 8. Konfigurasi Deployment:
- *    - Deskripsi: PAMSDIGI Web API v2.3.0
+ *    - Deskripsi: PAMSDIGI Web API v2.3.1
  *    - Jalankan sebagai (Execute as): Saya (Me)
  *    - Siapa yang memiliki akses (Who has access): Siapa saja (Anyone) -> WAJIB!
  * 9. Klik Terapkan (Deploy), berikan izin Google (Authorize Access), lalu Salin URL Aplikasi Web yang berakhiran /exec.
@@ -59,7 +60,9 @@ function doGet(e) {
       result.success = true;
     } else if (action === "saveConfig") {
       var gasUrlParam = (e && e.parameter && e.parameter.gasUrl) ? e.parameter.gasUrl : "";
-      var sheetNameParam = (e && e.parameter && e.parameter.spreadsheetName) ? e.parameter.spreadsheetName : db.getName();
+      var liveNameParam = db.getName() || "Db_pamsdigi";
+      if (liveNameParam === "PAMSDIGI Spreadsheet") liveNameParam = "Db_pamsdigi";
+      var sheetNameParam = (e && e.parameter && e.parameter.spreadsheetName && e.parameter.spreadsheetName !== "PAMSDIGI Spreadsheet") ? e.parameter.spreadsheetName : liveNameParam;
       var sheetIdParam = (e && e.parameter && e.parameter.spreadsheetId) ? e.parameter.spreadsheetId : db.getId();
       
       saveStoredConfig(db, {
@@ -78,10 +81,12 @@ function doGet(e) {
       result.message = "Konfigurasi database di Google Apps Script berhasil di-reset secara global.";
     } else {
       // Default: test connection
+      var liveDbName = db.getName() || "Db_pamsdigi";
+      if (liveDbName === "PAMSDIGI Spreadsheet") liveDbName = "Db_pamsdigi";
       result.success = true;
-      result.message = "Google Apps Script Web App PAMSDIGI v2.3.0 terhubung & aktif!";
+      result.message = "Google Apps Script Web App PAMSDIGI v2.3.1 terhubung & aktif!";
       result.timestamp = new Date().toISOString();
-      result.spreadsheetName = db.getName();
+      result.spreadsheetName = liveDbName;
       result.data = readAllSheetsData(db);
     }
   } catch (err) {
@@ -128,9 +133,11 @@ function doPost(e) {
       result.message = "Spreadsheet berhasil diinisialisasi secara aman.";
     } else if (action === "saveConfig") {
       var cfg = postData.config || {};
+      var livePostName = db.getName() || cfg.spreadsheetName || "Db_pamsdigi";
+      if (livePostName === "PAMSDIGI Spreadsheet") livePostName = "Db_pamsdigi";
       saveStoredConfig(db, {
         gasUrl: cfg.gasUrl || "",
-        spreadsheetName: cfg.spreadsheetName || db.getName() || "PAMSDIGI Spreadsheet",
+        spreadsheetName: livePostName,
         spreadsheetId: cfg.spreadsheetId || db.getId(),
         syncStatus: "Connected",
         lastConnected: new Date().toLocaleString("id-ID")
@@ -183,7 +190,7 @@ function initAllSheets(db) {
       defaultRows: [
         ['gasUrl', '', 'URL Web App Google Apps Script PAMSDIGI', new Date().toISOString()],
         ['spreadsheetId', db.getId(), 'ID Google Spreadsheet Database', new Date().toISOString()],
-        ['spreadsheetName', db.getName() || 'PAMSDIGI Spreadsheet', 'Nama File Spreadsheet', new Date().toISOString()],
+        ['spreadsheetName', (db.getName() && db.getName() !== 'PAMSDIGI Spreadsheet') ? db.getName() : 'Db_pamsdigi', 'Nama File Spreadsheet', new Date().toISOString()],
         ['syncStatus', 'Connected', 'Status Koneksi Database', new Date().toISOString()],
         ['lastConnected', new Date().toLocaleString('id-ID'), 'Waktu Terakhir Terhubung', new Date().toISOString()]
       ]
@@ -318,10 +325,13 @@ function saveStoredConfig(db, cfg) {
     }
   }
 
+  var realDbName = db.getName() || cfg.spreadsheetName || 'Db_pamsdigi';
+  if (realDbName === 'PAMSDIGI Spreadsheet') realDbName = 'Db_pamsdigi';
+
   var updates = [
     { key: 'gasUrl', val: cfg.gasUrl || '', desc: 'URL Web App Google Apps Script PAMSDIGI' },
     { key: 'spreadsheetId', val: cfg.spreadsheetId || db.getId(), desc: 'ID Google Spreadsheet Database' },
-    { key: 'spreadsheetName', val: cfg.spreadsheetName || db.getName() || 'PAMSDIGI Spreadsheet', desc: 'Nama File Spreadsheet' },
+    { key: 'spreadsheetName', val: realDbName, desc: 'Nama File Spreadsheet' },
     { key: 'syncStatus', val: cfg.syncStatus || 'Connected', desc: 'Status Koneksi Database' },
     { key: 'lastConnected', val: cfg.lastConnected || new Date().toLocaleString('id-ID'), desc: 'Waktu Terakhir Terhubung' }
   ];
@@ -344,10 +354,13 @@ function saveStoredConfig(db, cfg) {
  */
 function getStoredConfig(db) {
   initAllSheets(db);
+  var realSheetName = db.getName() || "Db_pamsdigi";
+  if (realSheetName === "PAMSDIGI Spreadsheet") realSheetName = "Db_pamsdigi";
+
   var config = {
     spreadsheetId: db.getId(),
     gasUrl: "",
-    spreadsheetName: db.getName() || "PAMSDIGI Spreadsheet",
+    spreadsheetName: realSheetName,
     syncStatus: "Disconnected",
     lastConnected: "Belum Terhubung"
   };
@@ -361,7 +374,9 @@ function getStoredConfig(db) {
       var val = String(values[i][1] || "").trim();
       if (key === "gasUrl") config.gasUrl = val;
       else if (key === "spreadsheetId") config.spreadsheetId = val || db.getId();
-      else if (key === "spreadsheetName") config.spreadsheetName = val || db.getName();
+      else if (key === "spreadsheetName") {
+        config.spreadsheetName = (val && val !== 'PAMSDIGI Spreadsheet') ? val : realSheetName;
+      }
       else if (key === "syncStatus") config.syncStatus = val || "Connected";
       else if (key === "lastConnected") config.lastConnected = val || new Date().toLocaleString("id-ID");
     }

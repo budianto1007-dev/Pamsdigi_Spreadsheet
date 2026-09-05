@@ -191,7 +191,7 @@ export async function getSavedDbConfig(): Promise<{
       if (sJson && sJson.gasUrl && sJson.gasUrl.startsWith('http')) {
         serverGasUrl = sJson.gasUrl;
         serverSyncStatus = sJson.syncStatus || 'Connected';
-        serverSpreadsheetName = sJson.spreadsheetName || 'PAMSDIGI Spreadsheet';
+        serverSpreadsheetName = (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? sJson.spreadsheetName : 'Db_pamsdigi';
         serverLastConnected = sJson.lastConnected || '';
         serverSpreadsheetId = sJson.spreadsheetId || '';
       }
@@ -238,7 +238,8 @@ export async function getSavedDbConfig(): Promise<{
         const activeUrl = cfg.gasUrl && typeof cfg.gasUrl === 'string' && cfg.gasUrl.trim().startsWith('http') ? cfg.gasUrl.trim() : (status === 'Connected' ? targetUrl : '');
 
         if (status === 'Connected' && activeUrl) {
-          const sheetName = cfg.spreadsheetName || serverSpreadsheetName || localStorage.getItem('pams_db_sheet_name') || 'PAMSDIGI Spreadsheet';
+          const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || localStorage.getItem('pams_db_sheet_name') || 'Db_pamsdigi';
+          const sheetName = (rawSheetName && rawSheetName !== 'PAMSDIGI Spreadsheet') ? rawSheetName : 'Db_pamsdigi';
           const lastConn = cfg.lastConnected || serverLastConnected || localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID');
           const sheetId = cfg.spreadsheetId || serverSpreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
 
@@ -276,9 +277,10 @@ export async function getSavedDbConfig(): Promise<{
 
   // Network fail-safe: if request fails due to temporary offline or network glitch, use server config or cached local
   if (serverSyncStatus === 'Connected' && serverGasUrl) {
+    const sName = (serverSpreadsheetName && serverSpreadsheetName !== 'PAMSDIGI Spreadsheet') ? serverSpreadsheetName : 'Db_pamsdigi';
     return {
       gasUrl: serverGasUrl,
-      spreadsheetName: serverSpreadsheetName || 'PAMSDIGI Spreadsheet',
+      spreadsheetName: sName,
       syncStatus: 'Connected',
       lastConnected: serverLastConnected || new Date().toLocaleString('id-ID'),
       spreadsheetId: serverSpreadsheetId || DEFAULT_SPREADSHEET_ID
@@ -286,9 +288,11 @@ export async function getSavedDbConfig(): Promise<{
   }
 
   if (localSyncStatus === 'Connected' && localGasUrl) {
+    const lName = localStorage.getItem('pams_db_sheet_name');
+    const safeLocalName = (lName && lName !== 'PAMSDIGI Spreadsheet') ? lName : 'Db_pamsdigi';
     return {
       gasUrl: localGasUrl,
-      spreadsheetName: localStorage.getItem('pams_db_sheet_name') || 'PAMSDIGI Spreadsheet',
+      spreadsheetName: safeLocalName,
       syncStatus: 'Connected',
       lastConnected: localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID'),
       spreadsheetId: localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID
@@ -324,9 +328,11 @@ export async function saveGlobalDbConfig(config: {
   spreadsheetId?: string;
   lastConnected?: string;
 }): Promise<void> {
+  const rawName = config.spreadsheetName || 'Db_pamsdigi';
+  const cleanName = rawName === 'PAMSDIGI Spreadsheet' ? 'Db_pamsdigi' : rawName;
   const payloadConfig = {
     gasUrl: config.gasUrl,
-    spreadsheetName: config.spreadsheetName || 'PAMSDIGI Spreadsheet',
+    spreadsheetName: cleanName,
     syncStatus: 'Connected' as const,
     lastConnected: config.lastConnected || new Date().toLocaleString('id-ID'),
     spreadsheetId: config.spreadsheetId || ''
@@ -455,10 +461,11 @@ export async function fetchGasConfig(customGasUrl?: string): Promise<GasConfigRe
         const activeUrl = status === 'Connected' ? (cfg.gasUrl || cleanCustom) : '';
 
         if (status === 'Connected') {
+          const rSheetName = cfg.spreadsheetName || 'Db_pamsdigi';
           return {
             syncStatus: 'Connected',
             gasUrl: activeUrl,
-            spreadsheetName: cfg.spreadsheetName || 'PAMSDIGI Spreadsheet',
+            spreadsheetName: rSheetName === 'PAMSDIGI Spreadsheet' ? 'Db_pamsdigi' : rSheetName,
             lastConnected: cfg.lastConnected || new Date().toLocaleString('id-ID'),
             spreadsheetId: cfg.spreadsheetId || ''
           };
@@ -507,7 +514,8 @@ export async function disconnectGoogleAccount(): Promise<void> {
  */
 export async function listSpreadsheets(): Promise<Array<{ id: string; name: string }>> {
   const activeId = localStorage.getItem('pams_google_sheet_id');
-  const activeName = localStorage.getItem('pams_db_sheet_name') || 'PAMSDIGI Spreadsheet';
+  const rawActiveName = localStorage.getItem('pams_db_sheet_name');
+  const activeName = (!rawActiveName || rawActiveName === 'PAMSDIGI Spreadsheet') ? 'Db_pamsdigi' : rawActiveName;
   if (activeId) {
     return [{ id: activeId, name: activeName }];
   }
