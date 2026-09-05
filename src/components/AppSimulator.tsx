@@ -1204,14 +1204,7 @@ RUNTIME DIAGNOSTIC
   // Enforce access control for settings tabs based on current user role
   useEffect(() => {
     if (currentView === 'pengaturan' && currentUser) {
-      const role = currentUser.role;
-      if (role === 'Petugas' || role === 'Admin') {
-        if (activeSettingsTab === 'database') {
-          setActiveSettingsTab('profil');
-          showToast('Akses Ditolak: Tab Integrasi Database hanya dapat diakses oleh Super Admin.', 'error');
-          addLog('error', `Access Denied: ${role} tried to open restricted Integrasi Database tab.`);
-        }
-      }
+      // Role-based access logic for settings tabs (all roles may view their respective allowed tabs)
     }
   }, [currentView, currentUser, activeSettingsTab]);
 
@@ -4130,22 +4123,7 @@ RUNTIME DIAGNOSTIC
           </div>
           
           <div className="flex items-center gap-2 flex-wrap justify-center">
-            <span className="text-xs font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full border border-slate-200/50 hidden sm:inline-block">
-              {currentView === 'master-data' ? `MASTER: ${activeMasterTab.toUpperCase()}` : currentView.replace('-', ' ').toUpperCase()}
-            </span>
-
-            {/* Global Spreadsheet Connection Badge */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition ${
-              dbSyncStatus === 'Connected'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-slate-100 text-slate-600 border-slate-200'
-            }`}>
-              <span className={`w-2 h-2 rounded-full ${dbSyncStatus === 'Connected' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-              <span className="hidden md:inline">{dbSyncStatus === 'Connected' ? 'Spreadsheet Aktif:' : 'Database:'}</span>
-              <span className="max-w-[120px] truncate">{dbSyncStatus === 'Connected' ? dbSpreadsheetName : 'Offline'}</span>
-            </div>
-
-            {/* Offline Queue Badge with Quick Drain Action */}
+            {/* Offline Queue Badge with Quick Drain Action (jika ada transaksi offline tertunda) */}
             {offlineQueueCount > 0 && (
               <button
                 onClick={handleDrainQueue}
@@ -7347,7 +7325,7 @@ RUNTIME DIAGNOSTIC
                     const role = currentUser?.role;
                     if (role === 'SUPER_ADMIN') return true;
                     if (role === 'Admin' || role === 'Petugas') {
-                      return tab.id === 'profil' || tab.id === 'aplikasi' || tab.id === 'backup' || tab.id === 'lisensi';
+                      return tab.id === 'profil' || tab.id === 'aplikasi' || tab.id === 'backup' || tab.id === 'database' || tab.id === 'lisensi';
                     }
                     return false;
                   }).map((tab) => (
@@ -8104,8 +8082,9 @@ RUNTIME DIAGNOSTIC
                   )}
 
                   {/* TAB 3.5: INTEGRASI DATABASE */}
-                  {activeSettingsTab === 'database' && currentUser?.role === 'SUPER_ADMIN' && (
-                    <div className="space-y-4 animate-fade-in text-white">
+                  {activeSettingsTab === 'database' && currentUser && (
+                    currentUser?.role === 'SUPER_ADMIN' ? (
+                      <div className="space-y-4 animate-fade-in text-white">
                       
                       {/* Main Integration Config Card (Dark theme) */}
                       <div className="bg-slate-900 text-white border border-slate-800 p-5 rounded-2xl shadow-xl space-y-5">
@@ -8548,7 +8527,64 @@ RUNTIME DIAGNOSTIC
                       )}
 
                     </div>
-                  )}
+                  ) : (
+                    /* TAMPILAN SELAIN SUPERUSER (ADMIN, PETUGAS): HANYA TAMPILKAN STATUS KONEKSI (GAMBAR 2) DAN DATABASE AKTIF (GAMBAR 3) */
+                    <div className="space-y-4 animate-fade-in text-white font-sans">
+                      {/* Gambar 2: STATUS KONEKSI DATABASE */}
+                      <div className="bg-slate-900 text-white border border-slate-800 p-4 rounded-2xl shadow-xl">
+                        <div className="flex items-center justify-between bg-slate-950/60 p-3.5 rounded-xl border border-slate-800/80">
+                          <div className="text-left">
+                            <span className="text-[10px] font-extrabold text-slate-300 uppercase tracking-wider block">Status Koneksi Database</span>
+                            <p className="text-[9.5px] text-slate-400 mt-0.5 font-medium font-sans">Kondisi sinkronisasi cloud real-time saat ini.</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {dbSyncStatus === 'Connected' && dbGasUrl ? (
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                                CONNECTED
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3.5 py-1.5 rounded-full uppercase tracking-wider">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                BELUM TERHUBUNG
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Gambar 3: DATABASE AKTIF (SHEETS LIVE INFO) */}
+                      <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-md space-y-3">
+                        <div className="flex items-center gap-1.5 border-b border-slate-850 pb-1.5">
+                          <Link2 size={12} className="text-amber-400" />
+                          <span className="text-[9px] font-black text-amber-400 uppercase tracking-wider block">
+                            DATABASE AKTIF (SHEETS LIVE INFO)
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs text-left">
+                          <div>
+                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Nama Spreadsheet:</span>
+                            <span className="font-extrabold text-slate-100 block mt-0.5">{dbSpreadsheetName}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Tanggal Koneksi Terakhir:</span>
+                            <span className="font-extrabold text-slate-100 block mt-0.5">{dbLastConnected}</span>
+                          </div>
+
+                          <div>
+                            <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider block">Status Sinkronisasi:</span>
+                            <span className="font-extrabold text-slate-100 block mt-0.5 flex items-center gap-1.5">
+                              <span className={`w-1.5 h-1.5 rounded-full ${dbSyncStatus === 'Connected' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`}></span>
+                              {dbSyncStatus === 'Connected' ? 'Tersinkronisasi' : 'Offline / Standalone'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
 
                   {/* TAB 4: LISENSI SISTEM */}
                   {activeSettingsTab === 'lisensi' && currentUser && (
