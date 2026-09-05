@@ -27,6 +27,7 @@ export interface GasConfigResult {
 }
 
 export const DEFAULT_GAS_URL = ((import.meta as any).env?.VITE_GAS_URL as string) || 'https://script.google.com/macros/s/AKfycbzDwmkxUigIyaMGL8R8MH_k0qjx7Q0imFJ20uWwlzbAzHCNWthD_hQot66M_cyuYI6umQ/exec';
+export const DEFAULT_SPREADSHEET_ID = '17k6KwADlEFVtLv1KW7VK6a42KBZXmb1wWez0ou2EfOc';
 
 // Offline queue key using standardized prefix
 const OFFLINE_QUEUE_KEY = 'pams_offline_queue';
@@ -239,7 +240,7 @@ export async function getSavedDbConfig(): Promise<{
         if (status === 'Connected' && activeUrl) {
           const sheetName = cfg.spreadsheetName || serverSpreadsheetName || localStorage.getItem('pams_db_sheet_name') || 'PAMSDIGI Spreadsheet';
           const lastConn = cfg.lastConnected || serverLastConnected || localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID');
-          const sheetId = cfg.spreadsheetId || serverSpreadsheetId || localStorage.getItem('pams_google_sheet_id') || '';
+          const sheetId = cfg.spreadsheetId || serverSpreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
 
           localStorage.setItem('pams_google_gas_url', activeUrl);
           localStorage.setItem('pams_last_known_gas_url', activeUrl);
@@ -280,7 +281,7 @@ export async function getSavedDbConfig(): Promise<{
       spreadsheetName: serverSpreadsheetName || 'PAMSDIGI Spreadsheet',
       syncStatus: 'Connected',
       lastConnected: serverLastConnected || new Date().toLocaleString('id-ID'),
-      spreadsheetId: serverSpreadsheetId
+      spreadsheetId: serverSpreadsheetId || DEFAULT_SPREADSHEET_ID
     };
   }
 
@@ -290,7 +291,7 @@ export async function getSavedDbConfig(): Promise<{
       spreadsheetName: localStorage.getItem('pams_db_sheet_name') || 'PAMSDIGI Spreadsheet',
       syncStatus: 'Connected',
       lastConnected: localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID'),
-      spreadsheetId: localStorage.getItem('pams_google_sheet_id') || ''
+      spreadsheetId: localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID
     };
   }
 
@@ -299,7 +300,7 @@ export async function getSavedDbConfig(): Promise<{
     spreadsheetName: 'Belum Terhubung',
     syncStatus: 'Disconnected',
     lastConnected: 'Belum Terhubung',
-    spreadsheetId: ''
+    spreadsheetId: DEFAULT_SPREADSHEET_ID
   };
 }
 
@@ -657,11 +658,12 @@ export async function pushDataToSheets(
 }
 
 /**
- * Fetches a public tab's contents from Google Spreadsheet using the Google Visualization API.
+ * Fetches a public tab's contents from Google Spreadsheet using the Google Visualization API with &headers=1.
  */
-async function fetchPublicTab(spreadsheetId: string, tabName: string): Promise<any[][]> {
-  const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(tabName)}`;
-  const response = await fetch(url);
+export async function fetchGvizTab(spreadsheetId: string, tabName: string): Promise<any[][]> {
+  const cleanId = (spreadsheetId || '').trim() || DEFAULT_SPREADSHEET_ID;
+  const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(cleanId)}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(tabName)}&t=${Date.now()}`;
+  const response = await fetch(url, { cache: 'no-store' });
   
   if (response.status === 404) {
     throw new Error('Spreadsheet tidak ditemukan');
@@ -676,32 +678,235 @@ async function fetchPublicTab(spreadsheetId: string, tabName: string): Promise<a
     text.includes('serviceLogin') || 
     text.includes('accounts.google.com')
   ) {
-    throw new Error('Spreadsheet belum dibagikan');
+    throw new Error('Spreadsheet belum dibagikan untuk publik (Viewer)');
   }
   
   const startIdx = text.indexOf('{');
   const endIdx = text.lastIndexOf('}');
   if (startIdx === -1 || endIdx === -1) {
-    throw new Error('Spreadsheet belum dibagikan');
+    return [];
   }
   
   const jsonStr = text.substring(startIdx, endIdx + 1);
   const data = JSON.parse(jsonStr);
   
   if (data.status === 'error') {
-    // Return empty if sheet tab is missing/empty
     return [];
   }
   
   const rows = data.table?.rows || [];
   return rows.map((r: any) => {
     if (!r || !r.c) return [];
-    return r.c.map((cell: any) => (cell && cell.v !== null && cell.v !== undefined) ? cell.v : '');
+    return r.c.map((cell: any) => {
+      if (!cell) return '';
+      return (cell.v !== null && cell.v !== undefined) ? cell.v : (cell.f || '');
+    });
   });
 }
 
+export const fetchPublicTab = fetchGvizTab;
+
 /**
- * Pull and parse data directly from Google Spreadsheet via Google Apps Script Web App.
+ * Fetches all database tables directly and in parallel via Google Visualization API (GViz)
+ */
+export async function fetchGvizAllData(spreadsheetId?: string): Promise<{
+  users?: UserRow[];
+  pelanggan?: PelangganRow[];
+  areas?: AreaRow[];
+  tarifs?: TarifRow[];
+  abonemen?: AbonemenRow;
+  denda?: DendaRow;
+  readings?: any[];
+  billingList?: any[];
+  cashTransactions?: any[];
+  profil?: any;
+}> {
+  let targetId = (spreadsheetId || '').trim();
+  if (!targetId) {
+    const cfg = await getSavedDbConfig();
+    targetId = cfg.spreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
+  }
+  if (!targetId) {
+    targetId = DEFAULT_SPREADSHEET_ID;
+  }
+
+  const tabNames = ['Users', 'Pelanggan', 'Area', 'Tarif', 'Abonemen', 'Denda', 'Meter', 'Tagihan', 'Pembayaran', 'Profil'];
+  
+  const results = await Promise.allSettled(
+    tabNames.map(tab => fetchGvizTab(targetId, tab))
+  );
+
+  const getTabRows = (index: number): any[][] => {
+    const res = results[index];
+    if (res.status === 'fulfilled') return res.value;
+    return [];
+  };
+
+  const usersRows = getTabRows(0);
+  const pelRows = getTabRows(1);
+  const areaRows = getTabRows(2);
+  const tarifRows = getTabRows(3);
+  const abonemenRows = getTabRows(4);
+  const dendaRows = getTabRows(5);
+  const meterRows = getTabRows(6);
+  const tagihanRows = getTabRows(7);
+  const bayarRows = getTabRows(8);
+  const profilRows = getTabRows(9);
+
+  const output: any = {};
+
+  // 1. Users
+  if (usersRows && usersRows.length > 0) {
+    const mappedUsers: UserRow[] = usersRows.map(r => ({
+      username: String(r[0] || '').trim(),
+      password: String(r[1] || ''),
+      nama: String(r[2] || '').trim(),
+      role: (String(r[3] || 'Petugas').trim()) as 'Admin' | 'Petugas',
+      status: (String(r[4] || 'Aktif').trim()) as 'Aktif' | 'Nonaktif',
+      areaAkses: String(r[5] || 'ALL').trim()
+    })).filter(u => u.username);
+    if (mappedUsers.length > 0) output.users = mappedUsers;
+  }
+
+  // 2. Pelanggan
+  if (pelRows) {
+    output.pelanggan = pelRows.map(r => ({
+      noPelanggan: String(r[0] || '').trim(),
+      nama: String(r[1] || '').trim(),
+      area: String(r[2] || '').trim(),
+      alamat: String(r[3] || '').trim(),
+      golongan: String(r[4] || '').trim(),
+      tempatPemasangan: String(r[5] || '').trim(),
+      tglPasang: String(r[6] || '').trim(),
+      meterAwal: Number(r[7]) || 0,
+      telepon: String(r[8] || '').trim(),
+      latitude: Number(r[9]) || -7.8012,
+      longitude: Number(r[10]) || 110.3644,
+      status: (String(r[11] || 'Aktif').trim()) as 'Aktif' | 'Nonaktif',
+      createdAt: String(r[12] || new Date().toISOString()).trim()
+    })).filter(p => p.noPelanggan);
+  }
+
+  // 3. Area (Rows directly start from first data item since &headers=1)
+  if (areaRows && areaRows.length > 0) {
+    const mappedAreas: AreaRow[] = areaRows.map(r => ({
+      id: String(r[0] || '').trim(),
+      nama: String(r[1] || '').trim()
+    })).filter(a => a.id && a.nama);
+    if (mappedAreas.length > 0) output.areas = mappedAreas;
+  }
+
+  // 4. Tarif
+  if (tarifRows && tarifRows.length > 0) {
+    const mappedTarifs: TarifRow[] = tarifRows.map(r => ({
+      id: String(r[0] || '').trim(),
+      golongan: String(r[1] || '').trim(),
+      tipe: (String(r[2] || 'Flat').trim()) as 'Flat' | 'Bertingkat',
+      tarifFlat: Number(r[3]) || 0,
+      range1Max: Number(r[4]) || 0,
+      range1Tarif: Number(r[5]) || 0,
+      range2Max: Number(r[6]) || 0,
+      range2Tarif: Number(r[7]) || 0,
+      range3Tarif: Number(r[8]) || 0,
+      status: (String(r[9] || 'Aktif').trim()) as 'Aktif' | 'Nonaktif',
+      levels: r[10] ? String(r[10]).trim() : undefined
+    })).filter(t => t.id);
+    if (mappedTarifs.length > 0) output.tarifs = mappedTarifs;
+  }
+
+  // 5. Abonemen
+  if (abonemenRows && abonemenRows.length > 0) {
+    const r = abonemenRows[0];
+    output.abonemen = {
+      nominal: Number(r[0]) || 0,
+      status: (String(r[1] || 'Nonaktif').trim()) as 'Aktif' | 'Nonaktif'
+    };
+  }
+
+  // 6. Denda
+  if (dendaRows && dendaRows.length > 0) {
+    const r = dendaRows[0];
+    output.denda = {
+      nominal: Number(r[0]) || 0,
+      hariKeterlambatan: Number(r[1]) || 0,
+      status: (String(r[2] || 'Nonaktif').trim()) as 'Aktif' | 'Nonaktif'
+    };
+  }
+
+  // 7. Meter
+  if (meterRows) {
+    output.readings = meterRows.map(r => ({
+      id: String(r[0] || '').trim(),
+      noPelanggan: String(r[1] || '').trim(),
+      nama: String(r[2] || '').trim(),
+      area: String(r[3] || '').trim(),
+      meterLalu: Number(r[4]) || 0,
+      meterKini: Number(r[5]) || 0,
+      usage: Number(r[6]) || 0,
+      tglBaca: String(r[7] || '').trim(),
+      periode: String(r[8] || '').trim(),
+      status: String(r[9] || '').trim(),
+      foto: r[10] ? String(r[10]) : null
+    })).filter(m => m.id);
+  }
+
+  // 8. Tagihan
+  if (tagihanRows) {
+    output.billingList = tagihanRows.map(r => ({
+      id: String(r[0] || '').trim(),
+      noPelanggan: String(r[1] || '').trim(),
+      nama: String(r[2] || '').trim(),
+      area: String(r[3] || '').trim(),
+      meterLalu: Number(r[4]) || 0,
+      meterKini: Number(r[5]) || 0,
+      usage: Number(r[6]) || 0,
+      kubikasiBiaya: Number(r[7]) || 0,
+      abonemen: Number(r[8]) || 0,
+      denda: Number(r[9]) || 0,
+      total: Number(r[10]) || 0,
+      status: String(r[11] || 'Belum Bayar').trim(),
+      periode: String(r[12] || '').trim(),
+      tglJatuhTempo: String(r[13] || '').trim()
+    })).filter(b => b.id);
+  }
+
+  // 9. Pembayaran
+  if (bayarRows) {
+    output.cashTransactions = bayarRows.map(r => ({
+      id: String(r[0] || '').trim(),
+      tanggal: String(r[1] || '').trim(),
+      deskripsi: String(r[2] || '').trim(),
+      tipe: (String(r[3] || 'Masuk').trim()) as 'Masuk' | 'Keluar',
+      jumlah: Number(r[4]) || 0,
+      area: String(r[5] || 'ALL').trim()
+    })).filter(t => t.id);
+  }
+
+  // 10. Profil
+  if (profilRows && profilRows.length > 0) {
+    const r = profilRows[0];
+    output.profil = {
+      systemNama: String(r[0] || '').trim(),
+      systemNamaDesa: String(r[1] || '').trim(),
+      systemKecamatan: String(r[2] || '').trim(),
+      systemKabupaten: String(r[3] || '').trim(),
+      systemProvinsi: String(r[4] || '').trim(),
+      systemAlamat: String(r[5] || '').trim(),
+      systemTelepon: String(r[6] || '').trim(),
+      systemEmail: String(r[7] || '').trim(),
+      systemKetua: String(r[8] || '').trim(),
+      systemBendahara: String(r[9] || '').trim(),
+      systemFooterStruk: String(r[10] || '').trim(),
+      systemLogo: String(r[11] || '').trim(),
+      systemStempel: String(r[12] || '').trim()
+    };
+  }
+
+  return output;
+}
+
+/**
+ * Pull and parse data directly from Google Spreadsheet via GViz API (Fastest Read) or GAS fallback.
  */
 export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
   users?: UserRow[];
@@ -715,7 +920,17 @@ export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
   cashTransactions?: any[];
   profil?: any;
 }> {
-  // 1. Try pulling directly from Google Apps Script Web App
+  // 1. Primary high-speed read via Google Visualization API (GViz)
+  try {
+    const gvizData = await fetchGvizAllData(spreadsheetId);
+    if (gvizData && (gvizData.users || gvizData.pelanggan || gvizData.areas || gvizData.tarifs || gvizData.profil)) {
+      return gvizData;
+    }
+  } catch (gvizErr) {
+    console.warn('GViz pull fallback to GAS:', gvizErr);
+  }
+
+  // 2. Secondary fallback via GAS Web App action=readAll
   const syncStatus = localStorage.getItem('pams_db_sync_status');
   const gasUrl = (await getSavedGasUrl()) || localStorage.getItem('pams_google_gas_url') || '';
 
@@ -731,19 +946,6 @@ export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
 
       if (resJson && resJson.success && resJson.data) {
         const d = resJson.data;
-        // Save to LocalStorage for local caching
-        try {
-          if (d.users) localStorage.setItem('pams_data_users_default', JSON.stringify(d.users));
-          if (d.pelanggan) localStorage.setItem('pams_data_pelanggan_default', JSON.stringify(d.pelanggan));
-          if (d.areas) localStorage.setItem('pams_data_areas_default', JSON.stringify(d.areas));
-          if (d.tarifs) localStorage.setItem('pams_data_tarifs_default', JSON.stringify(d.tarifs));
-          if (d.abonemen) localStorage.setItem('pams_data_abonemen_default', JSON.stringify(d.abonemen));
-          if (d.denda) localStorage.setItem('pams_data_denda_default', JSON.stringify(d.denda));
-          if (d.readings) localStorage.setItem('pams_data_readings_default', JSON.stringify(d.readings));
-          if (d.billingList) localStorage.setItem('pams_data_billing_default', JSON.stringify(d.billingList));
-          if (d.cashTransactions) localStorage.setItem('pams_data_cash_default', JSON.stringify(d.cashTransactions));
-        } catch (_) {}
-
         return {
           users: d.users || [],
           pelanggan: d.pelanggan || [],
@@ -760,191 +962,5 @@ export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
     } catch (_) {}
   }
 
-  // FALLBACK: Read-only via Public Visualization API
-  const result: any = {};
-  
-  if (!spreadsheetId) {
-    return result;
-  }
-  
-  try {
-    // 1. Users Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Users');
-      if (rows.length > 1) {
-        result.users = rows.slice(1).map(r => ({
-          username: String(r[0] || ''),
-          password: String(r[1] || ''),
-          nama: String(r[2] || ''),
-          role: String(r[3] || 'Petugas'),
-          status: String(r[4] || 'Aktif')
-        })).filter(u => u.username);
-      }
-    } catch (_) {}
-
-    // 2. Pelanggan Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Pelanggan');
-      if (rows.length > 1) {
-        result.pelanggan = rows.slice(1).map(r => ({
-          noPelanggan: String(r[0] || ''),
-          nama: String(r[1] || ''),
-          area: String(r[2] || ''),
-          alamat: String(r[3] || ''),
-          golongan: String(r[4] || ''),
-          tempatPemasangan: String(r[5] || ''),
-          tglPasang: String(r[6] || ''),
-          meterAwal: Number(r[7]) || 0,
-          telepon: String(r[8] || ''),
-          latitude: Number(r[9]) || -7.8012,
-          longitude: Number(r[10]) || 110.3644,
-          status: String(r[11] || 'Aktif'),
-          createdAt: String(r[12] || new Date().toISOString())
-        })).filter(p => p.noPelanggan);
-      }
-    } catch (_) {}
-
-    // 3. Area Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Area');
-      if (rows.length > 1) {
-        result.areas = rows.slice(1).map(r => ({
-          id: String(r[0] || ''),
-          nama: String(r[1] || '')
-        })).filter(a => a.id);
-      }
-    } catch (_) {}
-
-    // 4. Tarif Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Tarif');
-      if (rows.length > 1) {
-        result.tarifs = rows.slice(1).map(r => ({
-          id: String(r[0] || ''),
-          golongan: String(r[1] || ''),
-          tipe: String(r[2] || 'Flat') as 'Flat' | 'Bertingkat',
-          tarifFlat: Number(r[3]) || 0,
-          range1Max: Number(r[4]) || 0,
-          range1Tarif: Number(r[5]) || 0,
-          range2Max: Number(r[6]) || 0,
-          range2Tarif: Number(r[7]) || 0,
-          range3Tarif: Number(r[8]) || 0,
-          status: String(r[9] || 'Aktif') as 'Aktif' | 'Nonaktif'
-        })).filter(t => t.id);
-      }
-    } catch (_) {}
-
-    // 5. Abonemen Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Abonemen');
-      if (rows.length > 1) {
-        const r = rows[1] || [];
-        result.abonemen = {
-          nominal: Number(r[0]) || 0,
-          status: (r[1] || 'Nonaktif') as 'Aktif' | 'Nonaktif'
-        };
-      }
-    } catch (_) {}
-
-    // 6. Denda Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Denda');
-      if (rows.length > 1) {
-        const r = rows[1] || [];
-        result.denda = {
-          nominal: Number(r[0]) || 0,
-          hariKeterlambatan: Number(r[1]) || 0,
-          status: (r[2] || 'Nonaktif') as 'Aktif' | 'Nonaktif'
-        };
-      }
-    } catch (_) {}
-
-    // 7. Meter Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Meter');
-      if (rows.length > 1) {
-        result.readings = rows.slice(1).map(r => ({
-          id: String(r[0] || ''),
-          noPelanggan: String(r[1] || ''),
-          nama: String(r[2] || ''),
-          area: String(r[3] || ''),
-          meterLalu: Number(r[4]) || 0,
-          meterKini: Number(r[5]) || 0,
-          usage: Number(r[6]) || 0,
-          tglBaca: String(r[7] || ''),
-          periode: String(r[8] || ''),
-          foto: null
-        })).filter(r => r.id);
-      }
-    } catch (_) {}
-
-    // 8. Tagihan Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Tagihan');
-      if (rows.length > 1) {
-        result.billingList = rows.slice(1).map(r => ({
-          id: String(r[0] || ''),
-          noPelanggan: String(r[1] || ''),
-          nama: String(r[2] || ''),
-          area: String(r[3] || ''),
-          meterLalu: Number(r[4]) || 0,
-          meterKini: Number(r[5]) || 0,
-          usage: Number(r[6]) || 0,
-          kubikasiBiaya: Number(r[7]) || 0,
-          abonemen: Number(r[8]) || 0,
-          denda: Number(r[9]) || 0,
-          total: Number(r[10]) || 0,
-          status: String(r[11] || 'Belum Bayar'),
-          periode: String(r[12] || ''),
-          tglJatuhTempo: String(r[13] || '')
-        })).filter(b => b.id);
-      }
-    } catch (_) {}
-
-    // 9. Pembayaran Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Pembayaran');
-      if (rows.length > 1) {
-        result.cashTransactions = rows.slice(1).map(r => ({
-          id: String(r[0] || ''),
-          tanggal: String(r[1] || ''),
-          deskripsi: String(r[2] || ''),
-          tipe: String(r[3] || 'Masuk') as 'Masuk' | 'Keluar',
-          jumlah: Number(r[4]) || 0,
-          area: String(r[5] || 'ALL')
-        })).filter(t => t.id);
-      }
-    } catch (_) {}
-
-    // 10. Profil Tab
-    try {
-      const rows = await fetchPublicTab(spreadsheetId, 'Profil');
-      if (rows.length > 1) {
-        const r = rows[1] || [];
-        result.profil = {
-          systemNama: String(r[0] || ''),
-          systemNamaDesa: String(r[1] || ''),
-          systemKecamatan: String(r[2] || ''),
-          systemKabupaten: String(r[3] || ''),
-          systemProvinsi: String(r[4] || ''),
-          systemAlamat: String(r[5] || ''),
-          systemTelepon: String(r[6] || ''),
-          systemEmail: String(r[7] || ''),
-          systemKetua: String(r[8] || ''),
-          systemBendahara: String(r[9] || ''),
-          systemFooterStruk: String(r[10] || ''),
-          systemLogo: String(r[11] || ''),
-          systemStempel: String(r[12] || '')
-        };
-      }
-    } catch (_) {}
-
-  } catch (err: any) {
-    if (err.message === 'Spreadsheet belum dibagikan' || err.message === 'Spreadsheet tidak ditemukan') {
-      throw err;
-    }
-    throw new Error('Spreadsheet belum dibagikan');
-  }
-
-  return result;
+  return {};
 }

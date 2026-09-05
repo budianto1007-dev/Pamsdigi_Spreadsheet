@@ -53,6 +53,13 @@ export interface DendaRow {
   hariKeterlambatan: number;
 }
 
+export interface KonfigurasiRow {
+  key: string;
+  value: string;
+  deskripsi?: string;
+  updatedAt?: string;
+}
+
 export interface GASFile {
   name: string;
   type: 'gs' | 'html';

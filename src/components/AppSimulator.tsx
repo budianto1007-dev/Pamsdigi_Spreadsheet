@@ -275,8 +275,36 @@ export default function AppSimulator({
   const [currentUser, setCurrentUser] = useState<UserRow | null>(() => getStoredSession());
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'pelanggan' | 'catat-meter' | 'tagihan' | 'keuangan' | 'laporan' | 'master-data' | 'pengaturan' | 'spreadsheet' | 'code' | 'guide'>(() => {
     const user = getStoredSession();
-    return user ? 'dashboard' : 'login';
+    if (!user) return 'login';
+    const validViews = ['dashboard', 'pelanggan', 'catat-meter', 'tagihan', 'keuangan', 'laporan', 'master-data', 'pengaturan', 'spreadsheet', 'code', 'guide'];
+    const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '') : '';
+    if (hash && validViews.includes(hash)) {
+      return hash as any;
+    }
+    return 'dashboard';
   });
+
+  // Synchronize browser URL hash with currentView so page refresh persists current view without new localStorage
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      const validViews = ['dashboard', 'pelanggan', 'catat-meter', 'tagihan', 'keuangan', 'laporan', 'master-data', 'pengaturan', 'spreadsheet', 'code', 'guide'];
+      if (hash && validViews.includes(hash) && hash !== currentView) {
+        setCurrentView(hash as any);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentView]);
+
+  useEffect(() => {
+    if (currentUser && currentView && currentView !== 'login') {
+      const currentHash = window.location.hash.replace(/^#\/?/, '');
+      if (currentHash !== currentView) {
+        window.location.hash = currentView;
+      }
+    }
+  }, [currentView, currentUser]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pelangganFilterArea, setPelangganFilterArea] = useState('Semua');
 
@@ -1790,7 +1818,10 @@ RUNTIME DIAGNOSTIC
           }));
           setCurrentUser(response);
           showToast(`Selamat Datang ${response.nama}!`, 'success');
-          setCurrentView('dashboard');
+          const validViews = ['dashboard', 'pelanggan', 'catat-meter', 'tagihan', 'keuangan', 'laporan', 'master-data', 'pengaturan', 'spreadsheet', 'code', 'guide'];
+          const hash = typeof window !== 'undefined' ? window.location.hash.replace(/^#\/?/, '') : '';
+          const targetView = (hash && validViews.includes(hash)) ? (hash as any) : 'dashboard';
+          setCurrentView(targetView);
         } else {
           showToast(response.message, 'error');
         }
@@ -2213,6 +2244,9 @@ RUNTIME DIAGNOSTIC
     }
 
     localStorage.removeItem('pamsdigi_session');
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.location.hash = '';
+    }
     setCurrentUser(null);
     setCurrentView('login');
     showToast('Logout Berhasil!', 'success');
@@ -8404,11 +8438,11 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.2.0</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.0</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
-                                <span className="text-xs font-black text-slate-100 mt-1 block">04 Sep 2026</span>
+                                <span className="text-xs font-black text-slate-100 mt-1 block">05 Sep 2026</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
@@ -8421,15 +8455,23 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.2.0)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.0)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[NON-DESTRUCTIVE AUTO-CREATE SHEETS]</strong> Otomatis membuat sheet-sheet baru yang dibutuhkan aplikasi saat spreadsheet baru/kosong dihubungkan, tanpa menghapus atau mereset sheet yang sudah ada sebelumnya.</span>
+                                  <span><strong>[SINGLE SOURCE OF TRUTH SHEET KONFIGURASI]</strong> URL Apps Script, Spreadsheet ID, dan status sinkronisasi global kini disimpan langsung ke sheet <code>Konfigurasi</code> di Google Spreadsheet sehingga semua perangkat langsung sinkron tanpa config manual.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[FULL SPREADSHEET DATABASE CRUD]</strong> Seluruh transaksi (Users, Pelanggan, Area, Tarif, Abonemen, Denda, Catat Meter, Tagihan, Kas, Profil) langsung dikirim dan disimpan ke Google Spreadsheet.</span>
+                                  <span><strong>[HIGH-SPEED READ VIA GOOGLE GVIZ API]</strong> Pembacaan seluruh data sheet menggunakan GViz Query API secara paralel tanpa batas kuota execution Apps Script.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[NON-DESTRUCTIVE AUTO-CREATE SHEETS]</strong> Otomatis membuat seluruh tab/sheet yang dibutuhkan aplikasi saat spreadsheet baru/kosong dihubungkan, termasuk sheet Konfigurasi, Profil, Users, Pelanggan, Area, Tarif, Abonemen, Denda, Meter, Tagihan, dan Pembayaran tanpa menghapus data lama.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[FULL SPREADSHEET DATABASE CRUD]</strong> Seluruh operasi create, read, update, dan delete tersimpan permanen di Google Spreadsheet.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
@@ -8437,15 +8479,7 @@ RUNTIME DIAGNOSTIC
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[OFFLINE QUEUE &amp; AUTO-RESYNC]</strong> Menyimpan transaksi ke antrean saat petugas di lapangan kehilangan sinyal/offline, dan otomatis menyinkronkan ke Spreadsheet begitu koneksi internet pulih.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[AUTO-COMPRESS IMAGES]</strong> Kompresi otomatis foto catat meter dan logo KPSPAMS di bawah 200 KB dengan kualitas tinggi sebelum dikirim ke Google Apps Script/Drive.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[GLOBAL SYNC MULTI-DEVICE]</strong> Ketika Superadmin menyambungkan spreadsheet di satu browser, seluruh device lain (HP petugas, kasir) otomatis terkoneksi ke spreadsheet yang sama.</span>
+                                  <span><strong>[GLOBAL SYNC MULTI-DEVICE]</strong> Ketika Superadmin menyambungkan atau memperbarui konfigurasi di satu perangkat, seluruh device lain (HP petugas, kasir) otomatis terkoneksi ke spreadsheet yang sama.</span>
                                 </div>
                               </div>
                             </div>
