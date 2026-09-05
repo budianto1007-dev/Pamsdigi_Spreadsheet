@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "username": "admin",
+      "password": "123",
+      "nama": "Superadmin PAMSDIGI",
+      "role": "Superadmin",
+      "status": "Aktif"
+    }
+  ],
+  "pelanggan": [
+    {
+      "noPelanggan": "PEL-001",
+      "nama": "Siti Rahma",
+      "area": "Dusun Krajan",
+      "alamat": "RT 01 RW 02",
+      "golongan": "Rumah Tangga A",
+      "meterAwal": 10,
+      "status": "Aktif"
+    }
+  ],
+  "readings": [
+    {
+      "id": "R-1",
+      "noPelanggan": "PEL-001",
+      "nama": "Siti Rahma",
+      "meterLalu": 10,
+      "meterKini": 25,
+      "usage": 15,
+      "tglBaca": "2026-07-23",
+      "status": "Belum Bayar"
+    }
+  ]
+}

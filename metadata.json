@@ -1,0 +1,10 @@
+{
+  "name": "Pamsdigi final spreadsheet",
+  "description": "PAMSDIGI (PAMS Digital Indonesia) - Aplikasi Pencatatan Meter Air dan Pembayaran Tagihan untuk KPSPAMS dan Pengelola Air Desa",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
