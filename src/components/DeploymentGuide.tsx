@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookOpen, Table, Play, Rocket, ShieldAlert, CheckCircle, Info, ChevronRight } from 'lucide-react';
+import { BookOpen, Table, Play, Rocket, ShieldAlert, CheckCircle, Info, ChevronRight, GitBranch, Database, Globe, Layers, ArrowRight } from 'lucide-react';
 
 export default function DeploymentGuide() {
   return (
@@ -9,11 +9,102 @@ export default function DeploymentGuide() {
       <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-2xl">
         <h3 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
           <BookOpen className="text-indigo-600" />
-          Panduan Deployment PAMSDIGI - Sprint 1
+          Panduan Deployment PAMSDIGI
         </h3>
         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
           Ikuti petunjuk langkah demi langkah berikut untuk mendeploy sistem PAMSDIGI secara nyata menggunakan Google Spreadsheet sebagai database gratis dan Google Apps Script sebagai server Web App nirkabel.
         </p>
+      </div>
+
+      {/* Multi-Tenant Architecture Card (1 Repo -> Multiple Vercel -> Multiple Spreadsheets) */}
+      <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 border border-slate-800 shadow-md space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+              <Layers size={18} />
+            </div>
+            <div>
+              <h4 className="font-black text-sm text-white tracking-wide">
+                ARSITEKTUR MULTI-TENANT (1 REPOSITORI &rarr; BANYAK LINK VERCEL &rarr; BANYAK DATABASE)
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                1 Master Codebase di GitHub dapat dideploy ke banyak link Vercel mandiri dengan database Google Spreadsheet terisolasi per klien / desa.
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-extrabold px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full uppercase tracking-wider">
+            Multi-Tenant Ready
+          </span>
+        </div>
+
+        {/* Visual Architecture Flow */}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 space-y-3">
+          <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Diagram Alur Arsitektur:</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
+            
+            {/* Repo Column */}
+            <div className="bg-slate-900 p-3 rounded-lg border border-slate-700/80 flex flex-col justify-center items-center text-center space-y-1">
+              <GitBranch className="text-indigo-400" size={24} />
+              <span className="font-black text-indigo-300">1 GitHub Repository</span>
+              <span className="text-[10px] text-slate-400 font-sans">Single Source of Truth Kode Aplikasi PAMSDIGI</span>
+            </div>
+
+            {/* Vercel Column */}
+            <div className="space-y-2">
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-700 flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-bold text-sky-400"><Globe size={14} /> Link Vercel 1</span>
+                <span className="text-[9px] text-slate-400">Desa A</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-700 flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-bold text-sky-400"><Globe size={14} /> Link Vercel 2</span>
+                <span className="text-[9px] text-slate-400">Desa B</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-700 flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-bold text-sky-400"><Globe size={14} /> Link Vercel 3</span>
+                <span className="text-[9px] text-slate-400">Desa C</span>
+              </div>
+            </div>
+
+            {/* Spreadsheet Column */}
+            <div className="space-y-2">
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-emerald-900/60 flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-bold text-emerald-400"><Database size={14} /> Spreadsheet 1</span>
+                <span className="text-[9px] text-emerald-500 font-bold">Terisolasi</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-emerald-900/60 flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-bold text-emerald-400"><Database size={14} /> Spreadsheet 2</span>
+                <span className="text-[9px] text-emerald-500 font-bold">Terisolasi</span>
+              </div>
+              <div className="bg-slate-900 p-2.5 rounded-lg border border-emerald-900/60 flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1.5 font-bold text-emerald-400"><Database size={14} /> Spreadsheet 3</span>
+                <span className="text-[9px] text-emerald-500 font-bold">Terisolasi</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        {/* Instructions on Vercel Environment Variables */}
+        <div className="space-y-2 text-xs font-sans">
+          <p className="font-bold text-slate-200">Cara Mengatur di Dashboard Vercel:</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+              <p className="text-emerald-400 font-mono font-bold text-[11px]">1. VITE_GAS_URL</p>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Isi dengan URL Apps Script Web App (/exec) yang dideploy dari Spreadsheet milik desa bersangkutan.
+              </p>
+            </div>
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
+              <p className="text-emerald-400 font-mono font-bold text-[11px]">2. VITE_SPREADSHEET_ID</p>
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Isi dengan ID file Google Spreadsheet desa tersebut (karakter unik pada URL dokumen Google Drive).
+              </p>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 pt-1">
+            * Setiap perubahan atau update kode di repositori GitHub secara otomatis akan memicu redeploy di seluruh link Vercel secara serentak tanpa mengganggu atau mencampuradukkan data masing-masing Spreadsheet.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

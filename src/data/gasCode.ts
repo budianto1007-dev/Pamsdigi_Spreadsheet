@@ -8,17 +8,18 @@ export const gasFiles: GASFile[] = [
     content: `/**
  * PAMSDIGI - PAMS Digital Indonesia
  * REST API & Google Spreadsheet Database Integration
- * Version: v2.3.1
- * Last Updated: 05 September 2026
- * Status: Production Ready - Live Spreadsheet Database Name Sync
+ * Version: v2.3.2
+ * Last Updated: 06 September 2026
+ * Status: Production Ready - Dynamic Hak Akses & Menu Permissions Matrix
  * 
- * Change Log v2.3.1:
- * - [NEW] Live Dynamic Spreadsheet Name: Memastikan nama database langsung membaca nama live file spreadsheet Google Drive (Db_pamsdigi) secara dinamis melalui db.getName() dan menyimpannya ke sheet Konfigurasi.
- * - [NEW] Konfigurasi Sheet as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
- * - [NEW] Self-Provisioning Non-Destructive: Otomatis mendeteksi dan membuat seluruh sheet tabel yang belum ada di spreadsheet kosong (termasuk Konfigurasi) tanpa menghapus sheet yang sudah ada.
- * - [NEW] Default Admin Seeding: Otomatis mengisi akun admin default (username: admin, password: admin) jika sheet Users baru dibuat.
- * - [NEW] Live Authentication API: Endpoint login langsung ke sheet Users secara real-time dari HP petugas.
- * - [NEW] Full Spreadsheet Database CRUD: Menangani transaksi pushAll/readAll serta manajemen sinkronisasi global lintas perangkat.
+ * Change Log v2.3.2:
+ * - [NEW] Dynamic Hak Akses & Menu Matrix: Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet 'Konfigurasi' secara global.
+ * - [NEW] Custom Config Key Storage: Fungsi saveStoredConfig otomatis menyimpan dan memperbarui key konfigurasi baru (seperti HAK_AKSES_FITUR, HAK_AKSES_MENU) tanpa perlu hardcoded.
+ * - [UPDATE] Live Dynamic Spreadsheet Name: Memastikan nama database langsung membaca nama live file spreadsheet Google Drive (Db_pamsdigi) secara dinamis melalui db.getName() dan menyimpannya ke sheet Konfigurasi.
+ * - [UPDATE] Konfigurasi Sheet as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
+ * - [UPDATE] Default Admin Seeding: Otomatis mengisi akun admin default (username: admin, password: admin) jika sheet Users baru dibuat.
+ * - [UPDATE] Live Authentication API: Endpoint login langsung ke sheet Users secara real-time dari HP petugas.
+ * - [UPDATE] Full Spreadsheet Database CRUD: Menangani transaksi pushAll/readAll serta manajemen sinkronisasi global lintas perangkat.
  * 
  * PETUNJUK PEMASANGAN:
  * 1. Buka Google Spreadsheet baru atau yang sedang aktif.
@@ -29,7 +30,7 @@ export const gasFiles: GASFile[] = [
  * 6. Klik Terapkan (Deploy) -> Penerapan Baru (New Deployment).
  * 7. Pilih Jenis: Aplikasi Web (Web App).
  * 8. Konfigurasi Deployment:
- *    - Deskripsi: PAMSDIGI Web API v2.3.1
+ *    - Deskripsi: PAMSDIGI Web API v2.3.2
  *    - Jalankan sebagai (Execute as): Saya (Me)
  *    - Siapa yang memiliki akses (Who has access): Siapa saja (Anyone) -> WAJIB!
  * 9. Klik Terapkan (Deploy), berikan izin Google (Authorize Access), lalu Salin URL Aplikasi Web yang berakhiran /exec.
@@ -84,7 +85,7 @@ function doGet(e) {
       var liveDbName = db.getName() || "Db_pamsdigi";
       if (liveDbName === "PAMSDIGI Spreadsheet") liveDbName = "Db_pamsdigi";
       result.success = true;
-      result.message = "Google Apps Script Web App PAMSDIGI v2.3.1 terhubung & aktif!";
+      result.message = "Google Apps Script Web App PAMSDIGI v2.3.2 terhubung & aktif!";
       result.timestamp = new Date().toISOString();
       result.spreadsheetName = liveDbName;
       result.data = readAllSheetsData(db);
@@ -335,6 +336,21 @@ function saveStoredConfig(db, cfg) {
     { key: 'syncStatus', val: cfg.syncStatus || 'Connected', desc: 'Status Koneksi Database' },
     { key: 'lastConnected', val: cfg.lastConnected || new Date().toLocaleString('id-ID'), desc: 'Waktu Terakhir Terhubung' }
   ];
+
+  // Tambahkan key custom lainnya yang ada di cfg (misal: HAK_AKSES_FITUR, HAK_AKSES_MENU, dll.)
+  if (cfg && typeof cfg === 'object') {
+    Object.keys(cfg).forEach(function(customKey) {
+      if (customKey && !updates.some(function(u) { return u.key === customKey; })) {
+        var rawVal = cfg[customKey];
+        var stringVal = (typeof rawVal === 'object' && rawVal !== null) ? JSON.stringify(rawVal) : String(rawVal || '');
+        updates.push({
+          key: customKey,
+          val: stringVal,
+          desc: 'Pengaturan Sistem & Hak Akses PAMSDIGI'
+        });
+      }
+    });
+  }
 
   updates.forEach(function(item) {
     var nowIso = new Date().toISOString();

@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { UserRow, PelangganRow, AreaRow, TarifRow, AbonemenRow, DendaRow } from '../types';
+import { 
+  UserRow, PelangganRow, AreaRow, TarifRow, AbonemenRow, DendaRow,
+  RoleFeatureAccess, RoleMenuAccess, FeaturePermissions, MenuPermissions,
+  DEFAULT_FEATURE_ACCESS, DEFAULT_MENU_ACCESS
+} from '../types';
 import { 
   initialUsers, 
   initialPelanggan, 
@@ -14,7 +18,7 @@ import {
   Terminal, RefreshCw, Upload, Download, FileSpreadsheet, 
   AlertTriangle, Check, X, Settings, DollarSign, Bell, Clock, Edit, Trash2,
   Menu, Home, FileText, CreditCard, PieChart, Shield, Camera, Image, Droplet,
-  FileCode, BookOpen, Database, Link2, ExternalLink, Building2, Copy, Sparkles, RotateCcw
+  FileCode, BookOpen, Database, Link2, ExternalLink, Building2, Copy, Sparkles, RotateCcw, Save
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -421,7 +425,43 @@ export default function AppSimulator({
   ]);
   const [inputTransKategoriId, setInputTransKategoriId] = useState('cat-1');
   const [inputTransTanggal, setInputTransTanggal] = useState(new Date().toISOString().split('T')[0]);
-  const [petugasCanInputKeuangan, setPetugasCanInputKeuangan] = useState(true);
+  const [petugasCanInputKeuangan, setPetugasCanInputKeuangan] = useState(false);
+
+  // Dynamic Hak Akses & Menu Matrix State (Stored in Google Spreadsheet Konfigurasi sheet)
+  const [featureAccess, setFeatureAccess] = useState<RoleFeatureAccess>(DEFAULT_FEATURE_ACCESS);
+  const [menuAccess, setMenuAccess] = useState<RoleMenuAccess>(DEFAULT_MENU_ACCESS);
+  const [isSavingAccessRights, setIsSavingAccessRights] = useState(false);
+  const [lastAccessRightsSaved, setLastAccessRightsSaved] = useState<string>('');
+
+  const canPerformAction = (action: keyof FeaturePermissions): boolean => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'SUPER_ADMIN') return true;
+    const roleKey = currentUser.role === 'Admin' ? 'admin' : 'petugas';
+    return featureAccess[roleKey]?.[action] ?? false;
+  };
+
+  const isMenuVisible = (menuView: string): boolean => {
+    if (!currentUser) return true;
+    if (currentUser.role === 'SUPER_ADMIN') return true;
+    const roleKey = currentUser.role === 'Admin' ? 'admin' : 'petugas';
+    const roleMenu = menuAccess[roleKey];
+    if (!roleMenu) return true;
+    return roleMenu[menuView as keyof MenuPermissions] ?? true;
+  };
+
+  // Automatically redirect away from views that are hidden for the active user role
+  useEffect(() => {
+    if (!currentUser || currentUser.role === 'SUPER_ADMIN' || currentView === 'login') return;
+    const viewsToValidate = ['dashboard', 'pelanggan', 'catat-meter', 'tagihan', 'keuangan', 'laporan', 'master-data', 'pengaturan'];
+    if (viewsToValidate.includes(currentView) && !isMenuVisible(currentView)) {
+      const allowedItem = [
+        'dashboard', 'pelanggan', 'catat-meter', 'tagihan', 'keuangan', 'laporan', 'master-data', 'pengaturan'
+      ].find(v => isMenuVisible(v));
+      if (allowedItem) {
+        setCurrentView(allowedItem as any);
+      }
+    }
+  }, [currentUser, currentView, menuAccess]);
 
   // SPRINT 3 - Laporan & Analisis Submenus & Filters
   const [laporanActiveTab, setLaporanActiveTab] = useState<'ringkasan' | 'tagihan' | 'pembayaran' | 'tunggakan' | 'pemakaian-air' | 'pemasukan' | 'pengeluaran' | 'arus-kas' | 'rekap-area' | 'rekap-petugas'>('ringkasan');
@@ -1190,6 +1230,34 @@ RUNTIME DIAGNOSTIC
             }
           }
 
+          // Unpack Hak Akses & Menu Permissions from Sheet Konfigurasi
+          if (remoteData.konfigurasi && Array.isArray(remoteData.konfigurasi)) {
+            const featRow = remoteData.konfigurasi.find(k => k.key === 'HAK_AKSES_FITUR');
+            if (featRow && featRow.value) {
+              try {
+                const parsedFeat = JSON.parse(featRow.value);
+                if (parsedFeat && parsedFeat.admin && parsedFeat.petugas) {
+                  setFeatureAccess(parsedFeat);
+                }
+              } catch (_) {}
+            }
+
+            const menuRow = remoteData.konfigurasi.find(k => k.key === 'HAK_AKSES_MENU');
+            if (menuRow && menuRow.value) {
+              try {
+                const parsedMenu = JSON.parse(menuRow.value);
+                if (parsedMenu && parsedMenu.admin && parsedMenu.petugas) {
+                  setMenuAccess(parsedMenu);
+                }
+              } catch (_) {}
+            }
+
+            const petKeuRow = remoteData.konfigurasi.find(k => k.key === 'petugasCanInputKeuangan');
+            if (petKeuRow && petKeuRow.value !== undefined) {
+              setPetugasCanInputKeuangan(petKeuRow.value === 'true');
+            }
+          }
+
           setDbSyncStatus('Connected');
           localStorage.setItem('pams_db_sync_status', 'Connected');
           addLog('success', 'Database terhubung & data berhasil dimuat dari server database PAMSDIGI.');
@@ -1284,6 +1352,116 @@ RUNTIME DIAGNOSTIC
     systemStempel: systemStempel || ''
   });
 
+  // Helper to compile dynamic Konfigurasi rows (Hak Akses Fitur & Menu)
+  const getKonfigurasiPayload = (
+    customFeat?: RoleFeatureAccess,
+    customMenu?: RoleMenuAccess
+  ) => {
+    const f = customFeat || featureAccess;
+    const m = customMenu || menuAccess;
+    return [
+      { key: 'HAK_AKSES_FITUR', value: JSON.stringify(f), deskripsi: 'Matriks Hak Akses Fitur Operasi User PAMSDIGI' },
+      { key: 'HAK_AKSES_MENU', value: JSON.stringify(m), deskripsi: 'Matriks Hak Akses Menu Navigasi PAMSDIGI' },
+      { key: 'petugasCanInputKeuangan', value: String(f.petugas.catatKeuangan), deskripsi: 'Akses Input Transaksi Keuangan Petugas' }
+    ];
+  };
+
+  // Handler to toggle Feature Permissions checkbox
+  const handleToggleFeatureAccess = (role: 'admin' | 'petugas', key: keyof FeaturePermissions) => {
+    if (currentUser?.role !== 'Admin' && currentUser?.role !== 'SUPER_ADMIN') {
+      showToast('Akses Ditolak: Hanya Admin yang dapat mengubah hak akses!', 'error');
+      return;
+    }
+    const nextRolePermissions = {
+      ...featureAccess[role],
+      [key]: !featureAccess[role][key]
+    };
+    const updatedFeat = {
+      ...featureAccess,
+      [role]: nextRolePermissions
+    };
+    setFeatureAccess(updatedFeat);
+    if (role === 'petugas' && key === 'catatKeuangan') {
+      setPetugasCanInputKeuangan(nextRolePermissions.catatKeuangan);
+    }
+    // Auto-sync langsung ke spreadsheet database secara global
+    handleSaveAccessRights(updatedFeat, menuAccess, true);
+  };
+
+  // Handler to toggle Menu Visibility checkbox
+  const handleToggleMenuAccess = (role: 'admin' | 'petugas', key: keyof MenuPermissions) => {
+    if (currentUser?.role !== 'Admin' && currentUser?.role !== 'SUPER_ADMIN') {
+      showToast('Akses Ditolak: Hanya Admin yang dapat mengubah hak akses!', 'error');
+      return;
+    }
+    const nextRolePermissions = {
+      ...menuAccess[role],
+      [key]: !menuAccess[role][key]
+    };
+    const updatedMenu = {
+      ...menuAccess,
+      [role]: nextRolePermissions
+    };
+    setMenuAccess(updatedMenu);
+    // Auto-sync langsung ke spreadsheet database secara global
+    handleSaveAccessRights(featureAccess, updatedMenu, true);
+  };
+
+  // Save Hak Akses & Menu Permissions to Google Spreadsheet (Sheet Konfigurasi)
+  const handleSaveAccessRights = async (
+    customFeat?: RoleFeatureAccess,
+    customMenu?: RoleMenuAccess,
+    silent: boolean = false
+  ) => {
+    const targetFeat = customFeat || featureAccess;
+    const targetMenu = customMenu || menuAccess;
+
+    setIsSavingAccessRights(true);
+    try {
+      const konfigData = getKonfigurasiPayload(targetFeat, targetMenu);
+      await pushDataToSheets({
+        users,
+        pelanggan,
+        areas,
+        tarifs,
+        abonemen,
+        denda,
+        readings,
+        billingList,
+        cashTransactions,
+        konfigurasi: konfigData,
+        profil: getProfilPayload()
+      });
+
+      const nowTime = new Date().toLocaleTimeString('id-ID');
+      setLastAccessRightsSaved(nowTime);
+      if (!silent) {
+        showToast('Hak akses berhasil disimpan ke Spreadsheet!', 'success');
+      }
+      addLog('success', 'Hak akses berhasil disimpan ke Google Spreadsheet (Sheet Konfigurasi).');
+    } catch (err: any) {
+      if (!silent) {
+        showToast(`Gagal menyimpan hak akses ke spreadsheet: ${err.message || 'Error'}`, 'error');
+      }
+      addLog('error', `Gagal menyimpan hak akses: ${err.message}`);
+    } finally {
+      setIsSavingAccessRights(false);
+    }
+  };
+
+  // Reset Hak Akses to System Defaults
+  const handleResetAccessRights = async () => {
+    if (currentUser?.role !== 'Admin' && currentUser?.role !== 'SUPER_ADMIN') {
+      showToast('Akses Ditolak: Hanya Admin / Super Admin yang dapat me-reset hak akses!', 'error');
+      return;
+    }
+    setFeatureAccess(DEFAULT_FEATURE_ACCESS);
+    setMenuAccess(DEFAULT_MENU_ACCESS);
+    setPetugasCanInputKeuangan(DEFAULT_FEATURE_ACCESS.petugas.catatKeuangan);
+    await handleSaveAccessRights(DEFAULT_FEATURE_ACCESS, DEFAULT_MENU_ACCESS);
+    showToast('Hak akses berhasil di-reset ke nilai default sistem.', 'success');
+  };
+
   // Real-time Global Database Config Polling across all browsers/devices
   useEffect(() => {
     const syncInterval = setInterval(async () => {
@@ -1337,6 +1515,7 @@ RUNTIME DIAGNOSTIC
           readings,
           billingList,
           cashTransactions,
+          konfigurasi: getKonfigurasiPayload(),
           profil: getProfilPayload()
         });
       } catch (_) {}
@@ -1344,6 +1523,7 @@ RUNTIME DIAGNOSTIC
     return () => clearTimeout(syncTimeout);
   }, [
     users, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+    featureAccess, menuAccess,
     systemNama, systemNamaDesa, systemKecamatan, systemKabupaten, systemProvinsi, systemAlamat,
     systemHp, systemEmail, systemKetua, systemBendahara, systemFooterStruk, systemLogo, systemStempel
   ]);
@@ -1472,7 +1652,7 @@ RUNTIME DIAGNOSTIC
     functionName: string,
     args: any,
     onSuccess: (response: any) => void,
-    onFailure: (error: Error) => void
+    onFailure?: (error: Error) => void
   ) => {
     addLog('request', `google.script.run.${functionName}(${JSON.stringify(args) || ''})`);
     const delay = 500 + Math.random() * 500;
@@ -1481,7 +1661,11 @@ RUNTIME DIAGNOSTIC
       if (networkErrorSimulation) {
         const err = new Error('Connection timeout! Google Sheets API is currently unreachable.');
         addLog('error', `withFailureHandler: ${err.message}`);
-        onFailure(err);
+        if (onFailure) {
+          onFailure(err);
+        } else {
+          showToast(err.message, 'error');
+        }
         return;
       }
 
@@ -1845,6 +2029,18 @@ RUNTIME DIAGNOSTIC
 
   const handlePelangganFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isEditPelanggan) {
+      if (!canPerformAction('editPelanggan')) {
+        showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengedit pelanggan.', 'error');
+        return;
+      }
+    } else {
+      if (!canPerformAction('tambahPelanggan')) {
+        showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk menambah pelanggan baru.', 'error');
+        return;
+      }
+    }
     
     // Fallback if formArea/formGolongan are unselected
     const selectedArea = formArea || (areas.length > 0 ? areas[0].nama : 'Dusun Krajan');
@@ -2132,6 +2328,10 @@ RUNTIME DIAGNOSTIC
   };
 
   const openEditModal = (p: PelangganRow) => {
+    if (!canPerformAction('editPelanggan')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengedit pelanggan.', 'error');
+      return;
+    }
     setFormNoPelanggan(p.noPelanggan);
     setFormNama(p.nama);
     setFormArea(p.area);
@@ -2213,6 +2413,10 @@ RUNTIME DIAGNOSTIC
   };
 
   const openAddModal = () => {
+    if (!canPerformAction('tambahPelanggan')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mendaftarkan pelanggan baru.', 'error');
+      return;
+    }
     const autoNo = generateAutomaticNoPelanggan();
     setFormNoPelanggan(autoNo);
     setFormNama('');
@@ -2295,8 +2499,8 @@ RUNTIME DIAGNOSTIC
     e.preventDefault();
     if (!areaInputId.trim() || !areaInputNama.trim()) return;
 
-    if (currentUser?.role === 'Petugas') {
-      showToast('Akses Ditolak: Hanya Admin yang bisa mengubah data master!', 'error');
+    if (!canPerformAction('ubahMasterData')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengubah data wilayah/dusun!', 'error');
       return;
     }
 
@@ -2349,8 +2553,8 @@ RUNTIME DIAGNOSTIC
   };
 
   const handleDeleteAreaClick = (id: string) => {
-    if (currentUser?.role === 'Petugas') {
-      showToast('Akses Ditolak: Petugas tidak bisa menghapus data!', 'error');
+    if (!canPerformAction('hapusWilayah')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk menghapus wilayah/dusun!', 'error');
       return;
     }
     if (window.confirm('Yakin ingin menghapus data?')) {
@@ -2376,8 +2580,8 @@ RUNTIME DIAGNOSTIC
     e.preventDefault();
     if (!tarifInputId.trim() || !tarifInputGolongan.trim()) return;
 
-    if (currentUser?.role === 'Petugas') {
-      showToast('Akses Ditolak: Hanya Admin yang bisa mengubah data master!', 'error');
+    if (!canPerformAction('ubahMasterData')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengubah data tarif!', 'error');
       return;
     }
 
@@ -2505,8 +2709,8 @@ RUNTIME DIAGNOSTIC
   };
 
   const handleDeleteTarifClick = (id: string) => {
-    if (currentUser?.role === 'Petugas') {
-      showToast('Akses Ditolak: Petugas tidak bisa menghapus data!', 'error');
+    if (!canPerformAction('ubahMasterData')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk menghapus data tarif!', 'error');
       return;
     }
     if (window.confirm('Yakin ingin menghapus data?')) {
@@ -2530,8 +2734,8 @@ RUNTIME DIAGNOSTIC
 
   const handleSaveAbonemenClick = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser?.role === 'Petugas') {
-      showToast('Akses Ditolak: Hanya Admin yang bisa mengubah data master!', 'error');
+    if (!canPerformAction('ubahMasterData')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengubah data abonemen!', 'error');
       return;
     }
     setIsLoading(true);
@@ -2551,8 +2755,8 @@ RUNTIME DIAGNOSTIC
 
   const handleSaveDendaClick = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser?.role === 'Petugas') {
-      showToast('Akses Ditolak: Hanya Admin yang bisa mengubah data master!', 'error');
+    if (!canPerformAction('ubahMasterData')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengubah ketentuan denda!', 'error');
       return;
     }
     setIsLoading(true);
@@ -2930,6 +3134,10 @@ RUNTIME DIAGNOSTIC
   // --- HANDLER: CATAT METER ---
   const handleSaveMeterReading = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canPerformAction('catatMeter')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mencatat meteran.', 'error');
+      return;
+    }
     if (!selectedMeterPelanggan || !inputMeterKini) {
       showToast('Pilih pelanggan dan masukkan angka meteran!', 'error');
       return;
@@ -3214,6 +3422,10 @@ RUNTIME DIAGNOSTIC
 
   // --- HANDLER: BAYAR TAGIHAN (PAYMENT SETUP MODAL) ---
   const openPaymentSetupModal = (b: any) => {
+    if (!canPerformAction('bayarTagihan')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk memproses pembayaran tagihan.', 'error');
+      return;
+    }
     setPayingBill(b);
     setPaymentMethod('Tunai');
     setIsPayModalOpen(true);
@@ -3221,6 +3433,10 @@ RUNTIME DIAGNOSTIC
 
   const handleSavePayment = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canPerformAction('bayarTagihan')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk memproses pembayaran tagihan.', 'error');
+      return;
+    }
     if (!payingBill) return;
 
     const billId = payingBill.id;
@@ -3400,8 +3616,8 @@ RUNTIME DIAGNOSTIC
   // --- HANDLER: MANAGE CASH LEDGER ---
   const handleAddTransactionSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser?.role === 'Petugas' && !petugasCanInputKeuangan) {
-      showToast('Akses Ditolak: Anda tidak memiliki izin mencatat transaksi kas!', 'error');
+    if (!canPerformAction('catatKeuangan')) {
+      showToast('Akses Ditolak: Anda tidak memiliki hak akses mencatat transaksi kas!', 'error');
       return;
     }
 
@@ -4010,7 +4226,9 @@ RUNTIME DIAGNOSTIC
             { view: 'laporan', label: 'Laporan', icon: <PieChart size={16} /> },
             { view: 'master-data', label: 'Master Data', icon: <Settings size={16} /> },
             { view: 'pengaturan', label: 'Pengaturan', icon: <Shield size={16} /> },
-          ].map((item) => (
+          ]
+            .filter(item => isMenuVisible(item.view))
+            .map((item) => (
             <button
               key={item.view}
               onClick={() => setCurrentView(item.view as any)}
@@ -4085,7 +4303,9 @@ RUNTIME DIAGNOSTIC
                 { view: 'laporan', label: 'Laporan', icon: <PieChart size={16} /> },
                 { view: 'master-data', label: 'Master Data', icon: <Settings size={16} /> },
                 { view: 'pengaturan', label: 'Pengaturan', icon: <Shield size={16} /> },
-              ].map((item) => (
+              ]
+                .filter(item => isMenuVisible(item.view))
+                .map((item) => (
                 <button
                   key={item.view}
                   onClick={() => {
@@ -4819,13 +5039,15 @@ RUNTIME DIAGNOSTIC
                     <h2 className="font-extrabold text-slate-800 text-sm">Data Pelanggan</h2>
                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">KPSPAMS Desa</p>
                   </div>
-                  <button 
-                    onClick={openAddModal}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm cursor-pointer"
-                  >
-                    <Plus size={12} />
-                    Baru
-                  </button>
+                  {canPerformAction('tambahPelanggan') && (
+                    <button 
+                      onClick={openAddModal}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[11px] px-3 py-1.5 rounded-lg transition flex items-center gap-1 shadow-sm cursor-pointer"
+                    >
+                      <Plus size={12} />
+                      Baru
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-3 bg-white border-b border-slate-200 flex flex-col gap-2">
@@ -4927,12 +5149,39 @@ RUNTIME DIAGNOSTIC
                           </div>
                         </div>
 
-                        <button 
-                          onClick={() => openEditModal(p)}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition self-center cursor-pointer"
-                        >
-                          <Edit size={13} />
-                        </button>
+                        <div className="flex items-center gap-1 self-center">
+                          {canPerformAction('editPelanggan') && (
+                            <button 
+                              onClick={() => openEditModal(p)}
+                              title="Edit Pelanggan"
+                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Edit size={13} />
+                            </button>
+                          )}
+                          {canPerformAction('hapusPelanggan') && (
+                            <button 
+                              onClick={() => {
+                                if (window.confirm(`Yakin ingin menghapus data pelanggan ${p.nama} (${p.noPelanggan})?`)) {
+                                  setIsLoading(true);
+                                  runGoogleScript('deletePelanggan', p.noPelanggan, (resp) => {
+                                    setIsLoading(false);
+                                    if (resp.success) {
+                                      showToast(resp.message || 'Pelanggan berhasil dihapus!', 'success');
+                                      refreshStats();
+                                    } else {
+                                      showToast(resp.message || 'Gagal menghapus pelanggan', 'error');
+                                    }
+                                  });
+                                }
+                              }}
+                              title="Hapus Pelanggan"
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ));
                   })()}
@@ -5669,12 +5918,18 @@ RUNTIME DIAGNOSTIC
 
                           <div className="flex gap-2">
                             {b.status === 'Belum Bayar' ? (
-                              <button
-                                onClick={() => openPaymentSetupModal(b)}
-                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] py-1.5 rounded-lg transition text-center shadow-xs cursor-pointer flex items-center justify-center gap-1"
-                              >
-                                💵 Proses Pembayaran
-                              </button>
+                              canPerformAction('bayarTagihan') ? (
+                                <button
+                                  onClick={() => openPaymentSetupModal(b)}
+                                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] py-1.5 rounded-lg transition text-center shadow-xs cursor-pointer flex items-center justify-center gap-1"
+                                >
+                                  💵 Proses Pembayaran
+                                </button>
+                              ) : (
+                                <div className="flex-1 bg-slate-100 text-slate-400 font-bold text-[10px] py-1.5 rounded-lg text-center border border-slate-200">
+                                  Menunggu Pembayaran
+                                </div>
+                              )
                             ) : (
                               <button
                                 onClick={() => setSelectedBillForStruk(b)}
@@ -5730,10 +5985,10 @@ RUNTIME DIAGNOSTIC
                   <div className="flex-1 flex flex-col overflow-y-auto">
                     {/* Form to add custom entry */}
                     <div className="p-3">
-                      {currentUser?.role === 'Petugas' && !petugasCanInputKeuangan ? (
+                      {!canPerformAction('catatKeuangan') ? (
                         <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl text-[10px] text-amber-700 font-bold space-y-1 shadow-3xs">
                           <p className="flex items-center gap-1.5">⚠️ Penginputan Terkunci</p>
-                          <p className="font-medium text-slate-500 leading-normal text-[9px]">Akses Anda untuk mencatat transaksi kas dinonaktifkan oleh Admin. Silakan hubungi Admin untuk meminta izin penginputan.</p>
+                          <p className="font-medium text-slate-500 leading-normal text-[9px]">Akses Anda untuk mencatat transaksi kas dinonaktifkan oleh pengaturan hak akses sistem. Silakan hubungi Admin jika memerlukan izin penginputan kas.</p>
                         </div>
                       ) : (
                         <form onSubmit={handleAddTransactionSubmit} className="bg-white border border-slate-200 p-3 rounded-xl shadow-2xs space-y-2.5">
@@ -7254,75 +7509,181 @@ RUNTIME DIAGNOSTIC
                     </div>
                   )}
 
-                  {/* TAB SUBVIEW: HAK AKSES MATRIX */}
+                  {/* TAB SUBVIEW: HAK AKSES MATRIX & MENU VISIBILITY */}
                   {activeMasterTab === 'hak-akses' && (
-                    <div className="space-y-3 animate-fade-in text-xs text-slate-700">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block">Matriks Hak Akses User</span>
-                      
+                    <div id="hak-akses-matrix-panel" className="space-y-4 animate-fade-in text-xs text-slate-700 pb-6">
+                      {/* SECTION 1: MATRIKS HAK AKSES FITUR / OPERASI */}
                       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-3xs">
-                        <table className="w-full text-left border-collapse text-[10px]">
-                          <thead>
-                            <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold">
-                              <th className="p-2">Fitur / Operasi</th>
-                              <th className="p-2 text-center">Admin</th>
-                              <th className="p-2 text-center">Petugas</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium">
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Catat Meter Pelanggan</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Pendaftaran Pelanggan Baru</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Edit Profil Pelanggan</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Hapus Pelanggan</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center text-rose-500">✕ Tidak</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Ubah Master Data Tarif/Abo/Denda</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center text-rose-500">✕ Tidak</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Hapus Wilayah Dusun</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center text-rose-500">✕ Tidak</td>
-                            </tr>
-                            <tr>
-                              <td className="p-2 font-bold text-slate-800">Catat Transaksi Kas Keuangan</td>
-                              <td className="p-2 text-center text-emerald-600 font-bold">✓ Ya</td>
-                              <td className="p-2 text-center">
-                                <button
-                                  type="button"
-                                  disabled={currentUser?.role !== 'Admin' && currentUser?.role !== 'SUPER_ADMIN'}
-                                  onClick={() => {
-                                    const nextState = !petugasCanInputKeuangan;
-                                    setPetugasCanInputKeuangan(nextState);
-                                    showToast(`Akses Petugas mencatat keuangan diubah menjadi: ${nextState ? 'Diberikan' : 'Dicabut'}`, 'success');
-                                  }}
-                                  className={`px-2 py-0.5 text-[8px] font-black rounded transition cursor-pointer ${
-                                    petugasCanInputKeuangan 
-                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' 
-                                      : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                                  } disabled:opacity-75`}
-                                >
-                                  {petugasCanInputKeuangan ? '✓ Diberikan' : '✕ Dicabut'}
-                                </button>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
+                        <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200">
+                          <h4 className="font-extrabold text-slate-800 text-xs">
+                            1. Matriks Hak Akses Fitur & Operasi
+                          </h4>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-[10px]">
+                            <thead>
+                              <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-600 font-bold">
+                                <th className="p-2.5 w-1/2">Nama Fitur / Operasi</th>
+                                <th className="p-2.5 text-center w-1/4 font-extrabold text-slate-700">Admin</th>
+                                <th className="p-2.5 text-center w-1/4 font-extrabold text-slate-700">Petugas</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                              {[
+                                {
+                                  key: 'catatMeter' as keyof FeaturePermissions,
+                                  title: 'Catat Meter Pelanggan'
+                                },
+                                {
+                                  key: 'bayarTagihan' as keyof FeaturePermissions,
+                                  title: 'Tagihan / Penarikan Langsung & Input Pembayaran'
+                                },
+                                {
+                                  key: 'tambahPelanggan' as keyof FeaturePermissions,
+                                  title: 'Pendaftaran Pelanggan Baru'
+                                },
+                                {
+                                  key: 'editPelanggan' as keyof FeaturePermissions,
+                                  title: 'Edit Profil Pelanggan'
+                                },
+                                {
+                                  key: 'hapusPelanggan' as keyof FeaturePermissions,
+                                  title: 'Hapus Pelanggan'
+                                },
+                                {
+                                  key: 'ubahMasterData' as keyof FeaturePermissions,
+                                  title: 'Ubah Master Data Tarif/Abo/Denda'
+                                },
+                                {
+                                  key: 'hapusWilayah' as keyof FeaturePermissions,
+                                  title: 'Hapus Wilayah Dusun'
+                                },
+                                {
+                                  key: 'catatKeuangan' as keyof FeaturePermissions,
+                                  title: 'Catat Transaksi Kas Keuangan'
+                                },
+                              ].map((item) => {
+                                const adminChecked = featureAccess.admin[item.key];
+                                const petugasChecked = featureAccess.petugas[item.key];
+                                const isPermittedToEdit = currentUser?.role === 'Admin' || currentUser?.role === 'SUPER_ADMIN';
+
+                                return (
+                                  <tr key={item.key} className="hover:bg-slate-50/70 transition">
+                                    <td className="p-2.5 font-bold text-slate-800">
+                                      {item.title}
+                                    </td>
+                                    <td className="p-2.5 text-center align-middle">
+                                      <input
+                                        type="checkbox"
+                                        checked={adminChecked}
+                                        disabled={!isPermittedToEdit}
+                                        onChange={() => handleToggleFeatureAccess('admin', item.key)}
+                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-60"
+                                      />
+                                    </td>
+                                    <td className="p-2.5 text-center align-middle">
+                                      <input
+                                        type="checkbox"
+                                        checked={petugasChecked}
+                                        disabled={!isPermittedToEdit}
+                                        onChange={() => handleToggleFeatureAccess('petugas', item.key)}
+                                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:opacity-60"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* SECTION 2: AKSES MENU NAVIGASI */}
+                      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-3xs">
+                        <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200">
+                          <h4 className="font-extrabold text-slate-800 text-xs">
+                            2. Akses Menu Navigasi
+                          </h4>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-[10px]">
+                            <thead>
+                              <tr className="bg-slate-100/75 border-b border-slate-200 text-slate-600 font-bold">
+                                <th className="p-2.5 w-1/2">Nama Menu Navigasi</th>
+                                <th className="p-2.5 text-center w-1/4 font-extrabold text-slate-700">Admin</th>
+                                <th className="p-2.5 text-center w-1/4 font-extrabold text-slate-700">Petugas</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-medium">
+                              {[
+                                {
+                                  key: 'dashboard' as keyof MenuPermissions,
+                                  label: 'Dashboard'
+                                },
+                                {
+                                  key: 'pelanggan' as keyof MenuPermissions,
+                                  label: 'Pelanggan'
+                                },
+                                {
+                                  key: 'catat-meter' as keyof MenuPermissions,
+                                  label: 'Catat Meter'
+                                },
+                                {
+                                  key: 'tagihan' as keyof MenuPermissions,
+                                  label: 'Tagihan'
+                                },
+                                {
+                                  key: 'keuangan' as keyof MenuPermissions,
+                                  label: 'Keuangan'
+                                },
+                                {
+                                  key: 'laporan' as keyof MenuPermissions,
+                                  label: 'Laporan'
+                                },
+                                {
+                                  key: 'master-data' as keyof MenuPermissions,
+                                  label: 'Master Data'
+                                },
+                                {
+                                  key: 'pengaturan' as keyof MenuPermissions,
+                                  label: 'Pengaturan'
+                                },
+                              ].map((menuItem) => {
+                                const adminChecked = menuAccess.admin[menuItem.key];
+                                const petugasChecked = menuAccess.petugas[menuItem.key];
+                                const isPermittedToEdit = currentUser?.role === 'Admin' || currentUser?.role === 'SUPER_ADMIN';
+
+                                return (
+                                  <tr key={menuItem.key} className="hover:bg-slate-50/70 transition">
+                                    <td className="p-2.5 font-bold text-slate-800">
+                                      {menuItem.label}
+                                    </td>
+                                    <td className="p-2.5 text-center align-middle">
+                                      <input
+                                        type="checkbox"
+                                        checked={adminChecked}
+                                        disabled={!isPermittedToEdit}
+                                        onChange={() => handleToggleMenuAccess('admin', menuItem.key)}
+                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer disabled:opacity-60"
+                                      />
+                                    </td>
+                                    <td className="p-2.5 text-center align-middle">
+                                      <input
+                                        type="checkbox"
+                                        checked={petugasChecked}
+                                        disabled={!isPermittedToEdit}
+                                        onChange={() => handleToggleMenuAccess('petugas', menuItem.key)}
+                                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:opacity-60"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                     </div>
                   )}

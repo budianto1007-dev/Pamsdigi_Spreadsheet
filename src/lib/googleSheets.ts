@@ -26,8 +26,17 @@ export interface GasConfigResult {
   spreadsheetId: string;
 }
 
-export const DEFAULT_GAS_URL = ((import.meta as any).env?.VITE_GAS_URL as string) || 'https://script.google.com/macros/s/AKfycbzDwmkxUigIyaMGL8R8MH_k0qjx7Q0imFJ20uWwlzbAzHCNWthD_hQot66M_cyuYI6umQ/exec';
-export const DEFAULT_SPREADSHEET_ID = '17k6KwADlEFVtLv1KW7VK6a42KBZXmb1wWez0ou2EfOc';
+// Multi-tenant environment configuration:
+// When deploying from 1 Repository to multiple Vercel instances (e.g. Vercel 1 -> Sheet 1, Vercel 2 -> Sheet 2):
+// Set VITE_GAS_URL and VITE_SPREADSHEET_ID in each Vercel project's Environment Variables.
+export const ENV_GAS_URL = (((import.meta as any).env?.VITE_GAS_URL as string) || '').trim();
+export const ENV_SPREADSHEET_ID = (((import.meta as any).env?.VITE_SPREADSHEET_ID as string) || '').trim();
+
+export const FALLBACK_GAS_URL = 'https://script.google.com/macros/s/AKfycbzDwmkxUigIyaMGL8R8MH_k0qjx7Q0imFJ20uWwlzbAzHCNWthD_hQot66M_cyuYI6umQ/exec';
+export const FALLBACK_SPREADSHEET_ID = '17k6KwADlEFVtLv1KW7VK6a42KBZXmb1wWez0ou2EfOc';
+
+export const DEFAULT_GAS_URL = ENV_GAS_URL || FALLBACK_GAS_URL;
+export const DEFAULT_SPREADSHEET_ID = ENV_SPREADSHEET_ID || FALLBACK_SPREADSHEET_ID;
 
 // Offline queue key using standardized prefix
 const OFFLINE_QUEUE_KEY = 'pams_offline_queue';
@@ -176,34 +185,41 @@ export async function getSavedDbConfig(): Promise<{
   const lastKnownUrl = localStorage.getItem('pams_last_known_gas_url') || '';
   const localSyncStatus = localStorage.getItem('pams_db_sync_status') || 'Disconnected';
 
+  // Check if this Vercel deployment has an authoritative environment variable (e.g. VITE_GAS_URL)
+  const isEnvDriven = Boolean(ENV_GAS_URL && ENV_GAS_URL.startsWith('http'));
+
   // 1. First poll centralized server config so all devices (HP, desktop, new browsers) sync globally
+  // Only query fallback server file if this deployment is NOT strictly bound by an env variable
   let serverGasUrl = '';
   let serverSyncStatus = '';
   let serverSpreadsheetName = '';
   let serverLastConnected = '';
   let serverSpreadsheetId = '';
 
-  try {
-    const serverRes = await fetch('/api/db-config', { cache: 'no-store' })
-      .catch(() => fetch('/db_config.json?t=' + Date.now(), { cache: 'no-store' }));
-    if (serverRes && serverRes.ok) {
-      const sJson = await serverRes.json();
-      if (sJson && sJson.gasUrl && sJson.gasUrl.startsWith('http')) {
-        serverGasUrl = sJson.gasUrl;
-        serverSyncStatus = sJson.syncStatus || 'Connected';
-        serverSpreadsheetName = (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? sJson.spreadsheetName : 'Db_pamsdigi';
-        serverLastConnected = sJson.lastConnected || '';
-        serverSpreadsheetId = sJson.spreadsheetId || '';
+  if (!isEnvDriven) {
+    try {
+      const serverRes = await fetch('/api/db-config', { cache: 'no-store' })
+        .catch(() => fetch('/db_config.json?t=' + Date.now(), { cache: 'no-store' }));
+      if (serverRes && serverRes.ok) {
+        const sJson = await serverRes.json();
+        if (sJson && sJson.gasUrl && sJson.gasUrl.startsWith('http')) {
+          serverGasUrl = sJson.gasUrl;
+          serverSyncStatus = sJson.syncStatus || 'Connected';
+          serverSpreadsheetName = (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? sJson.spreadsheetName : 'Db_pamsdigi';
+          serverLastConnected = sJson.lastConnected || '';
+          serverSpreadsheetId = sJson.spreadsheetId || '';
+        }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
 
-  // Prioritize server config for global connection across all devices
+  // Prioritize URLs to poll for live spreadsheet connection
   const urlsToPoll: string[] = [];
-  if (serverGasUrl && serverGasUrl.startsWith('http')) urlsToPoll.push(serverGasUrl);
+  if (ENV_GAS_URL && ENV_GAS_URL.startsWith('http')) urlsToPoll.push(ENV_GAS_URL);
+  if (serverGasUrl && serverGasUrl.startsWith('http') && !urlsToPoll.includes(serverGasUrl)) urlsToPoll.push(serverGasUrl);
   if (DEFAULT_GAS_URL && DEFAULT_GAS_URL.startsWith('http') && !urlsToPoll.includes(DEFAULT_GAS_URL)) urlsToPoll.push(DEFAULT_GAS_URL);
-  if (localGasUrl && localGasUrl.startsWith('http') && !urlsToPoll.includes(localGasUrl)) urlsToPoll.push(localGasUrl);
-  if (lastKnownUrl && lastKnownUrl.startsWith('http') && !urlsToPoll.includes(lastKnownUrl)) urlsToPoll.push(lastKnownUrl);
+  if (!isEnvDriven && localGasUrl && localGasUrl.startsWith('http') && !urlsToPoll.includes(localGasUrl)) urlsToPoll.push(localGasUrl);
+  if (!isEnvDriven && lastKnownUrl && lastKnownUrl.startsWith('http') && !urlsToPoll.includes(lastKnownUrl)) urlsToPoll.push(lastKnownUrl);
 
   if (urlsToPoll.length === 0) {
     localStorage.setItem('pams_google_gas_url', DEFAULT_GAS_URL);
@@ -216,7 +232,7 @@ export async function getSavedDbConfig(): Promise<{
       spreadsheetName: 'Belum Terhubung',
       syncStatus: 'Disconnected',
       lastConnected: 'Belum Terhubung',
-      spreadsheetId: ''
+      spreadsheetId: ENV_SPREADSHEET_ID || ''
     };
   }
 
@@ -241,7 +257,7 @@ export async function getSavedDbConfig(): Promise<{
           const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || localStorage.getItem('pams_db_sheet_name') || 'Db_pamsdigi';
           const sheetName = (rawSheetName && rawSheetName !== 'PAMSDIGI Spreadsheet') ? rawSheetName : 'Db_pamsdigi';
           const lastConn = cfg.lastConnected || serverLastConnected || localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID');
-          const sheetId = cfg.spreadsheetId || serverSpreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
+          const sheetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || serverSpreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
 
           localStorage.setItem('pams_google_gas_url', activeUrl);
           localStorage.setItem('pams_last_known_gas_url', activeUrl);
@@ -268,7 +284,7 @@ export async function getSavedDbConfig(): Promise<{
             spreadsheetName: 'Belum Terhubung',
             syncStatus: 'Disconnected',
             lastConnected: 'Belum Terhubung',
-            spreadsheetId: ''
+            spreadsheetId: ENV_SPREADSHEET_ID || ''
           };
         }
       }
@@ -283,7 +299,7 @@ export async function getSavedDbConfig(): Promise<{
       spreadsheetName: sName,
       syncStatus: 'Connected',
       lastConnected: serverLastConnected || new Date().toLocaleString('id-ID'),
-      spreadsheetId: serverSpreadsheetId || DEFAULT_SPREADSHEET_ID
+      spreadsheetId: ENV_SPREADSHEET_ID || serverSpreadsheetId || DEFAULT_SPREADSHEET_ID
     };
   }
 
@@ -295,7 +311,7 @@ export async function getSavedDbConfig(): Promise<{
       spreadsheetName: safeLocalName,
       syncStatus: 'Connected',
       lastConnected: localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID'),
-      spreadsheetId: localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID
+      spreadsheetId: ENV_SPREADSHEET_ID || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID
     };
   }
 
@@ -304,7 +320,7 @@ export async function getSavedDbConfig(): Promise<{
     spreadsheetName: 'Belum Terhubung',
     syncStatus: 'Disconnected',
     lastConnected: 'Belum Terhubung',
-    spreadsheetId: DEFAULT_SPREADSHEET_ID
+    spreadsheetId: ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID
   };
 }
 
@@ -592,6 +608,7 @@ export async function pushDataToSheets(
       systemLogo?: string;
       systemStempel?: string;
     };
+    konfigurasi?: Array<{ key: string; value: string; deskripsi?: string }>;
   }
 ): Promise<void> {
   const data = maybeData || spreadsheetIdOrData;
@@ -606,6 +623,7 @@ export async function pushDataToSheets(
     readings: data.readings || [],
     billingList: data.billingList || [],
     cashTransactions: data.cashTransactions || [],
+    konfigurasi: data.konfigurasi || [],
     profil: data.profil || {
       systemNama: localStorage.getItem('pams_system_nama') || 'KPSPAMS DESA MANDIRI',
       systemNamaDesa: localStorage.getItem('pams_system_nama_desa') || 'Desa Mandiri',
@@ -669,7 +687,7 @@ export async function pushDataToSheets(
  * Fetches a public tab's contents from Google Spreadsheet using the Google Visualization API with &headers=1.
  */
 export async function fetchGvizTab(spreadsheetId: string, tabName: string): Promise<any[][]> {
-  const cleanId = (spreadsheetId || '').trim() || DEFAULT_SPREADSHEET_ID;
+  const cleanId = (spreadsheetId || '').trim() || ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
   const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(cleanId)}/gviz/tq?tqx=out:json&headers=1&sheet=${encodeURIComponent(tabName)}&t=${Date.now()}`;
   const response = await fetch(url, { cache: 'no-store' });
   
@@ -728,17 +746,18 @@ export async function fetchGvizAllData(spreadsheetId?: string): Promise<{
   billingList?: any[];
   cashTransactions?: any[];
   profil?: any;
+  konfigurasi?: Array<{ key: string; value: string; deskripsi?: string; updatedAt?: string }>;
 }> {
   let targetId = (spreadsheetId || '').trim();
   if (!targetId) {
     const cfg = await getSavedDbConfig();
-    targetId = cfg.spreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
+    targetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
   }
   if (!targetId) {
-    targetId = DEFAULT_SPREADSHEET_ID;
+    targetId = ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
   }
 
-  const tabNames = ['Users', 'Pelanggan', 'Area', 'Tarif', 'Abonemen', 'Denda', 'Meter', 'Tagihan', 'Pembayaran', 'Profil'];
+  const tabNames = ['Users', 'Pelanggan', 'Area', 'Tarif', 'Abonemen', 'Denda', 'Meter', 'Tagihan', 'Pembayaran', 'Profil', 'Konfigurasi'];
   
   const results = await Promise.allSettled(
     tabNames.map(tab => fetchGvizTab(targetId, tab))
@@ -760,6 +779,7 @@ export async function fetchGvizAllData(spreadsheetId?: string): Promise<{
   const tagihanRows = getTabRows(7);
   const bayarRows = getTabRows(8);
   const profilRows = getTabRows(9);
+  const konfigRows = getTabRows(10);
 
   const output: any = {};
 
@@ -910,6 +930,16 @@ export async function fetchGvizAllData(spreadsheetId?: string): Promise<{
     };
   }
 
+  // 11. Konfigurasi
+  if (konfigRows && konfigRows.length > 0) {
+    output.konfigurasi = konfigRows.map(r => ({
+      key: String(r[0] || '').trim(),
+      value: String(r[1] || '').trim(),
+      deskripsi: String(r[2] || '').trim(),
+      updatedAt: String(r[3] || '').trim()
+    })).filter(k => k.key);
+  }
+
   return output;
 }
 
@@ -927,11 +957,12 @@ export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
   billingList?: any[];
   cashTransactions?: any[];
   profil?: any;
+  konfigurasi?: Array<{ key: string; value: string; deskripsi?: string; updatedAt?: string }>;
 }> {
   // 1. Primary high-speed read via Google Visualization API (GViz)
   try {
     const gvizData = await fetchGvizAllData(spreadsheetId);
-    if (gvizData && (gvizData.users || gvizData.pelanggan || gvizData.areas || gvizData.tarifs || gvizData.profil)) {
+    if (gvizData && (gvizData.users || gvizData.pelanggan || gvizData.areas || gvizData.tarifs || gvizData.profil || gvizData.konfigurasi)) {
       return gvizData;
     }
   } catch (gvizErr) {
@@ -965,6 +996,7 @@ export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
           billingList: d.billingList || [],
           cashTransactions: d.cashTransactions || [],
           profil: d.profil || null,
+          konfigurasi: d.konfigurasi || [],
         };
       }
     } catch (_) {}

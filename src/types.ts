@@ -67,3 +67,81 @@ export interface GASFile {
   description: string;
 }
 
+export interface FeaturePermissions {
+  catatMeter: boolean;        // Catat Meter Pelanggan
+  bayarTagihan: boolean;      // Penarikan Langsung & Input Pembayaran Tagihan
+  tambahPelanggan: boolean;   // Pendaftaran Pelanggan Baru
+  editPelanggan: boolean;     // Edit Profil Pelanggan
+  hapusPelanggan: boolean;    // Hapus Pelanggan
+  ubahMasterData: boolean;    // Ubah Master Data Tarif/Abo/Denda
+  hapusWilayah: boolean;      // Hapus Wilayah Dusun
+  catatKeuangan: boolean;     // Catat Transaksi Kas Keuangan
+}
+
+export interface RoleFeatureAccess {
+  admin: FeaturePermissions;
+  petugas: FeaturePermissions;
+}
+
+export interface MenuPermissions {
+  dashboard: boolean;
+  pelanggan: boolean;
+  'catat-meter': boolean;
+  tagihan: boolean;
+  keuangan: boolean;
+  laporan: boolean;
+  'master-data': boolean;
+  pengaturan: boolean;
+}
+
+export interface RoleMenuAccess {
+  admin: MenuPermissions;
+  petugas: MenuPermissions;
+}
+
+export const DEFAULT_FEATURE_ACCESS: RoleFeatureAccess = {
+  admin: {
+    catatMeter: true,
+    bayarTagihan: true,
+    tambahPelanggan: true,
+    editPelanggan: true,
+    hapusPelanggan: true,
+    ubahMasterData: true,
+    hapusWilayah: true,
+    catatKeuangan: true,
+  },
+  petugas: {
+    catatMeter: true,
+    bayarTagihan: true,
+    tambahPelanggan: false,
+    editPelanggan: false,
+    hapusPelanggan: false,
+    ubahMasterData: false,
+    hapusWilayah: false,
+    catatKeuangan: false,
+  },
+};
+
+export const DEFAULT_MENU_ACCESS: RoleMenuAccess = {
+  admin: {
+    dashboard: true,
+    pelanggan: true,
+    'catat-meter': true,
+    tagihan: true,
+    keuangan: true,
+    laporan: true,
+    'master-data': true,
+    pengaturan: true,
+  },
+  petugas: {
+    dashboard: true,
+    pelanggan: false,
+    'catat-meter': true,
+    tagihan: true,
+    keuangan: false,
+    laporan: false,
+    'master-data': false,
+    pengaturan: false,
+  },
+};
+
