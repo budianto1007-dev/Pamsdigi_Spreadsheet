@@ -8803,11 +8803,11 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.1</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.2</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
-                                <span className="text-xs font-black text-slate-100 mt-1 block">05 Sep 2026</span>
+                                <span className="text-xs font-black text-slate-100 mt-1 block">06 Sep 2026</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
@@ -8820,8 +8820,16 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.1)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.2)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[DYNAMIC HAK AKSES &amp; MENU PERMISSIONS MATRIX]</strong> Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet <code>Konfigurasi</code> di Google Spreadsheet secara global.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[CUSTOM CONFIG KEY STORAGE]</strong> Fungsi <code>saveStoredConfig</code> otomatis menyimpan dan memperbarui key konfigurasi baru tanpa perlu hardcoded.</span>
+                                </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[LIVE DYNAMIC SPREADSHEET NAME (Db_pamsdigi)]</strong> Memastikan nama database langsung membaca nama live file Google Spreadsheet (<code>Db_pamsdigi</code>) secara dinamis melalui <code>db.getName()</code> dan menyimpannya ke sheet <code>Konfigurasi</code>.</span>
