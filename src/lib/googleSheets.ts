@@ -258,7 +258,7 @@ export async function getSavedDbConfig(): Promise<{
       if (json && json.success && json.config) {
         const cfg = json.config;
         const status = cfg.syncStatus === 'Connected' ? 'Connected' : 'Disconnected';
-        const activeUrl = cfg.gasUrl && typeof cfg.gasUrl === 'string' && cfg.gasUrl.trim().startsWith('http') ? cfg.gasUrl.trim() : (status === 'Connected' ? targetUrl : '');
+        const activeUrl = targetUrl;
 
         if (status === 'Connected' && activeUrl) {
           const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || 'Db_pamsdigi';
@@ -346,22 +346,18 @@ export async function saveGlobalDbConfig(config: {
     }).catch(_ => {});
   } catch (_) {}
 
-  // 2. Direct client-side GAS sync (write directly to sheet 'Konfigurasi' via Apps Script action=saveConfig)
-  const urlsToUpdate = new Set<string>();
-  if (config.gasUrl && config.gasUrl.startsWith('http')) urlsToUpdate.add(config.gasUrl);
-  if (DEFAULT_GAS_URL && DEFAULT_GAS_URL.startsWith('http')) urlsToUpdate.add(DEFAULT_GAS_URL);
-
-  for (const url of urlsToUpdate) {
+  // 2. Direct client-side GAS sync (write directly to sheet 'Konfigurasi' of THIS specific spreadsheet only)
+  if (config.gasUrl && config.gasUrl.startsWith('http')) {
     try {
       const queryParams = new URLSearchParams({
         action: 'saveConfig',
         spreadsheetName: payloadConfig.spreadsheetName,
         spreadsheetId: payloadConfig.spreadsheetId,
         syncStatus: 'Connected',
-        gasUrl: config.gasUrl || '',
+        gasUrl: config.gasUrl,
         t: String(Date.now())
       });
-      const directUrl = `${url}${url.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+      const directUrl = `${config.gasUrl}${config.gasUrl.includes('?') ? '&' : '?'}${queryParams.toString()}`;
       await fetch(directUrl, { method: 'GET', redirect: 'follow' }).catch(_ => {});
     } catch (_) {}
   }
@@ -371,7 +367,7 @@ export async function saveGlobalDbConfig(config: {
  * Disconnects global database configuration in Google Apps Script PropertiesService and server
  */
 export async function disconnectGlobalDbConfig(): Promise<boolean> {
-  const currentGasUrl = await getSavedGasUrl() || DEFAULT_GAS_URL;
+  const currentGasUrl = await getSavedGasUrl();
 
   // 1. Update centralized server
   try {
@@ -388,13 +384,10 @@ export async function disconnectGlobalDbConfig(): Promise<boolean> {
     }).catch(_ => {});
   } catch (_) {}
 
-  const urlsToReset = new Set<string>();
-  if (currentGasUrl && currentGasUrl.startsWith('http')) urlsToReset.add(currentGasUrl);
-  if (DEFAULT_GAS_URL && DEFAULT_GAS_URL.startsWith('http')) urlsToReset.add(DEFAULT_GAS_URL);
-
-  for (const url of urlsToReset) {
+  // 2. Only reset the specific tenant's GAS URL, never touch other databases
+  if (currentGasUrl && currentGasUrl.startsWith('http')) {
     try {
-      const directUrl = `${url}${url.includes('?') ? '&' : '?'}&action=resetConfig&syncStatus=Disconnected&t=${Date.now()}`;
+      const directUrl = `${currentGasUrl}${currentGasUrl.includes('?') ? '&' : '?'}&action=resetConfig&syncStatus=Disconnected&t=${Date.now()}`;
       await fetch(directUrl, { method: 'GET', redirect: 'follow' }).catch(_ => {});
     } catch (_) {}
   }
