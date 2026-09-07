@@ -40,7 +40,10 @@ import {
   authenticateWithSheets,
   getOfflineQueueCount,
   drainOfflineQueue,
-  DEFAULT_GAS_URL
+  DEFAULT_GAS_URL,
+  DEFAULT_SPREADSHEET_ID,
+  ENV_GAS_URL,
+  ENV_SPREADSHEET_ID
 } from '../lib/googleSheets';
 import { compressImage, getBase64SizeKB } from '../lib/imageCompressor';
 
@@ -570,32 +573,17 @@ export default function AppSimulator({
   const [activeSettingsTab, setActiveSettingsTab] = useState<'profil' | 'aplikasi' | 'backup' | 'database' | 'lisensi'>('profil');
 
   // Database integration state variables
-  const [dbCompanyName, setDbCompanyName] = useState<string>(() => localStorage.getItem('pams_db_company_name') || 'KPSPAMS DESA MANDIRI');
-  const [dbCompanyId, setDbCompanyId] = useState<string>(() => localStorage.getItem('pams_db_company_id') || 'COMP-PAMSDIGI-2026');
-  const [dbSpreadsheetId, setDbSpreadsheetId] = useState<string>(() => localStorage.getItem('pams_google_sheet_id') || '');
+  const [dbCompanyName, setDbCompanyName] = useState<string>('KPSPAMS DESA MANDIRI');
+  const [dbCompanyId, setDbCompanyId] = useState<string>('COMP-PAMSDIGI-2026');
+  const [dbSpreadsheetId, setDbSpreadsheetId] = useState<string>(() => {
+    return ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
+  });
   const [dbGasUrl, setDbGasUrl] = useState<string>(() => {
-    return localStorage.getItem('pams_google_gas_url') || DEFAULT_GAS_URL;
+    return ENV_GAS_URL || DEFAULT_GAS_URL;
   });
-  const [dbLastConnected, setDbLastConnected] = useState<string>(() => {
-    const syncStatus = localStorage.getItem('pams_db_sync_status');
-    if (syncStatus === 'Disconnected') return 'Belum Terhubung';
-    return localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID');
-  });
-  const [dbSyncStatus, setDbSyncStatus] = useState<'Connected' | 'Disconnected'>(() => {
-    const saved = localStorage.getItem('pams_db_sync_status');
-    if (saved === 'Disconnected') return 'Disconnected';
-    return 'Connected';
-  });
-  const [dbSpreadsheetName, setDbSpreadsheetName] = useState<string>(() => {
-    const syncStatus = localStorage.getItem('pams_db_sync_status');
-    if (syncStatus === 'Disconnected') return 'Belum Terhubung';
-    const saved = localStorage.getItem('pams_db_sheet_name');
-    if (!saved || saved === 'PAMSDIGI Spreadsheet' || saved === 'DB_kpspmas siaga') {
-      localStorage.setItem('pams_db_sheet_name', 'Db_pamsdigi');
-      return 'Db_pamsdigi';
-    }
-    return saved;
-  });
+  const [dbLastConnected, setDbLastConnected] = useState<string>(() => new Date().toLocaleString('id-ID'));
+  const [dbSyncStatus, setDbSyncStatus] = useState<'Connected' | 'Disconnected'>('Connected');
+  const [dbSpreadsheetName, setDbSpreadsheetName] = useState<string>('Db_pamsdigi');
   const [showResetDbModal, setShowResetDbModal] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(() => getOfflineQueueCount());
 
@@ -643,17 +631,11 @@ export default function AppSimulator({
     try {
       await disconnectGlobalDbConfig();
 
-      const lastKnown = localStorage.getItem('pams_last_known_gas_url') || dbGasUrl;
-
       setDbSpreadsheetName('Belum Terhubung');
       setDbSpreadsheetId('');
       setDbSyncStatus('Disconnected');
       setDbLastConnected('Belum Terhubung');
       setDbCheckSteps([]);
-
-      if (!dbGasUrl && lastKnown) {
-        setDbGasUrl(lastKnown);
-      }
 
       showToast('Koneksi database berhasil diputus (Disconnected). Status: BELUM TERHUBUNG', 'success');
       addLog('info', 'Koneksi database diputus oleh SUPER_ADMIN. Status aplikasi menjadi BELUM TERHUBUNG.');
@@ -685,7 +667,6 @@ export default function AppSimulator({
     if (cleanUrl.endsWith('/dev')) {
       cleanUrl = cleanUrl.substring(0, cleanUrl.length - 4) + '/exec';
       setDbGasUrl(cleanUrl);
-      localStorage.setItem('pams_google_gas_url', cleanUrl);
     }
 
     if (cleanUrl.includes('/edit') || cleanUrl.includes('/macros/d/')) {
@@ -699,7 +680,6 @@ export default function AppSimulator({
     }
 
     setDbGasUrl(cleanUrl);
-    localStorage.setItem('pams_google_gas_url', cleanUrl);
 
     setIsCheckingDb(true);
 
@@ -872,11 +852,6 @@ RUNTIME DIAGNOSTIC
       setDbSpreadsheetName(realSheetName);
       setDbLastConnected(lastConn);
       setDbSyncStatus('Connected');
-
-      localStorage.setItem('pams_google_gas_url', cleanUrl);
-      localStorage.setItem('pams_db_sheet_name', realSheetName);
-      localStorage.setItem('pams_db_sync_status', 'Connected');
-      localStorage.setItem('pams_db_last_connected', lastConn);
       
       updateStepStatus('finalize', 'success');
       addLog('success', `Simpan & Cek Database: Berhasil menghubungkan dan memvalidasi Google Spreadsheet.`);
@@ -1040,91 +1015,26 @@ RUNTIME DIAGNOSTIC
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  const loadTenantData = (sheetId: string) => {
-    if (!sheetId) return;
-
-    const usersKey = `pams_data_users_${sheetId}`;
-    const pelangganKey = `pams_data_pelanggan_${sheetId}`;
-    const areasKey = `pams_data_areas_${sheetId}`;
-    const tarifsKey = `pams_data_tarifs_${sheetId}`;
-    const abonemenKey = `pams_data_abonemen_${sheetId}`;
-    const dendaKey = `pams_data_denda_${sheetId}`;
-    
-    const readingsKey = `pams_data_readings_${sheetId}`;
-    const billingKey = `pams_data_billing_${sheetId}`;
-    const cashKey = `pams_data_cash_${sheetId}`;
-
-    const tenantUsers = localStorage.getItem(usersKey);
-    const tenantPelanggan = localStorage.getItem(pelangganKey);
-    const tenantAreas = localStorage.getItem(areasKey);
-    const tenantTarifs = localStorage.getItem(tarifsKey);
-    const tenantAbonemen = localStorage.getItem(abonemenKey);
-    const tenantDenda = localStorage.getItem(dendaKey);
-    
-    const tenantReadings = localStorage.getItem(readingsKey);
-    const tenantBilling = localStorage.getItem(billingKey);
-    const tenantCash = localStorage.getItem(cashKey);
-
-    const loadedUsers = tenantUsers ? JSON.parse(tenantUsers) : [...initialUsers];
-    const loadedPelanggan = tenantPelanggan ? JSON.parse(tenantPelanggan) : [...initialPelanggan];
-    const loadedAreas = tenantAreas ? JSON.parse(tenantAreas) : [...initialAreas];
-    const loadedTarifs = tenantTarifs ? JSON.parse(tenantTarifs) : [...initialTarifs];
-    const loadedAbonemen = tenantAbonemen ? JSON.parse(tenantAbonemen) : { ...initialAbonemen };
-    const loadedDenda = tenantDenda ? JSON.parse(tenantDenda) : { ...initialDenda };
-
-    // Swap state in App.tsx
+  const loadTenantData = (_sheetId?: string) => {
+    // In-memory fallback - zero localStorage
     onRestoreAllData({
-      users: loadedUsers,
-      pelanggan: loadedPelanggan,
-      areas: loadedAreas,
-      tarifs: loadedTarifs,
-      abonemen: loadedAbonemen,
-      denda: loadedDenda
+      users: [...initialUsers],
+      pelanggan: [...initialPelanggan],
+      areas: [...initialAreas],
+      tarifs: [...initialTarifs],
+      abonemen: { ...initialAbonemen },
+      denda: { ...initialDenda }
     });
-
-    // Handle readings, billingList, and cashTransactions
-    let finalReadings = [];
-    let finalBilling = [];
-    let finalCash = [];
-
-    if (tenantReadings) {
-      finalReadings = JSON.parse(tenantReadings);
-    } else {
-      finalReadings = [];
-    }
-
-    if (tenantBilling) {
-      finalBilling = JSON.parse(tenantBilling);
-    } else {
-      finalBilling = [];
-    }
-
-    if (tenantCash) {
-      finalCash = JSON.parse(tenantCash);
-    } else {
-      finalCash = [];
-    }
-
-    setReadings(finalReadings);
-    setBillingList(finalBilling);
-    setCashTransactions(finalCash);
-
-    localStorage.setItem(usersKey, JSON.stringify(loadedUsers));
-    localStorage.setItem(pelangganKey, JSON.stringify(loadedPelanggan));
-    localStorage.setItem(areasKey, JSON.stringify(loadedAreas));
-    localStorage.setItem(tarifsKey, JSON.stringify(loadedTarifs));
-    localStorage.setItem(abonemenKey, JSON.stringify(loadedAbonemen));
-    localStorage.setItem(dendaKey, JSON.stringify(loadedDenda));
-    localStorage.setItem(readingsKey, JSON.stringify(finalReadings));
-    localStorage.setItem(billingKey, JSON.stringify(finalBilling));
-    localStorage.setItem(cashKey, JSON.stringify(finalCash));
+    setReadings([]);
+    setBillingList([]);
+    setCashTransactions([]);
   };
 
   const isLoadedRef = useRef(false);
 
   useEffect(() => {
     const initializeData = async () => {
-      let activeSheetId = localStorage.getItem('pams_google_sheet_id') || '';
+      const activeSheetId = dbSpreadsheetId;
       
       // Google Apps Script is the single source of truth for connection status & config
       const liveConfig = await fetchGasConfig();
@@ -1259,7 +1169,6 @@ RUNTIME DIAGNOSTIC
           }
 
           setDbSyncStatus('Connected');
-          localStorage.setItem('pams_db_sync_status', 'Connected');
           addLog('success', 'Database terhubung & data berhasil dimuat dari server database PAMSDIGI.');
           isLoadedRef.current = true;
           return;
@@ -1324,11 +1233,6 @@ RUNTIME DIAGNOSTIC
             setDbSpreadsheetName('Belum Terhubung');
             setDbLastConnected('Belum Terhubung');
             setDbCheckSteps([]);
-            localStorage.setItem('pams_google_gas_url', DEFAULT_GAS_URL);
-            localStorage.setItem('pams_db_sheet_name', 'Belum Terhubung');
-            localStorage.setItem('pams_google_sheet_id', '');
-            localStorage.setItem('pams_db_sync_status', 'Disconnected');
-            localStorage.setItem('pams_db_last_connected', 'Belum Terhubung');
           }
         }
       });
@@ -1485,11 +1389,6 @@ RUNTIME DIAGNOSTIC
             setDbSpreadsheetName('Belum Terhubung');
             setDbLastConnected('Belum Terhubung');
             setDbCheckSteps([]);
-            localStorage.setItem('pams_google_gas_url', DEFAULT_GAS_URL);
-            localStorage.setItem('pams_db_sheet_name', 'Belum Terhubung');
-            localStorage.setItem('pams_google_sheet_id', '');
-            localStorage.setItem('pams_db_sync_status', 'Disconnected');
-            localStorage.setItem('pams_db_last_connected', 'Belum Terhubung');
             addLog('info', 'Sistem mendeteksi konfigurasi database di-reset secara global. Status diubah menjadi BELUM TERHUBUNG.');
           }
         }
@@ -1527,19 +1426,6 @@ RUNTIME DIAGNOSTIC
     systemNama, systemNamaDesa, systemKecamatan, systemKabupaten, systemProvinsi, systemAlamat,
     systemHp, systemEmail, systemKetua, systemBendahara, systemFooterStruk, systemLogo, systemStempel
   ]);
-
-  useEffect(() => {
-    const sheetId = dbSpreadsheetId || 'default';
-    localStorage.setItem(`pams_data_users_${sheetId}`, JSON.stringify(users));
-    localStorage.setItem(`pams_data_pelanggan_${sheetId}`, JSON.stringify(pelanggan));
-    localStorage.setItem(`pams_data_areas_${sheetId}`, JSON.stringify(areas));
-    localStorage.setItem(`pams_data_tarifs_${sheetId}`, JSON.stringify(tarifs));
-    localStorage.setItem(`pams_data_abonemen_${sheetId}`, JSON.stringify(abonemen));
-    localStorage.setItem(`pams_data_denda_${sheetId}`, JSON.stringify(denda));
-    localStorage.setItem(`pams_data_readings_${sheetId}`, JSON.stringify(readings));
-    localStorage.setItem(`pams_data_billing_${sheetId}`, JSON.stringify(billingList));
-    localStorage.setItem(`pams_data_cash_${sheetId}`, JSON.stringify(cashTransactions));
-  }, [users, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions, dbSpreadsheetId]);
 
   // Simulated Apps Script logs
   const [logs, setLogs] = useState<SimulatedLog[]>([
@@ -2437,19 +2323,7 @@ RUNTIME DIAGNOSTIC
   const handleLogout = () => {
     const isDemo = !dbGasUrl || dbSyncStatus !== 'Connected';
     if (isDemo) {
-      // Clear all demo data from local storage for the current sheetId (or 'default')
-      const sheetId = dbSpreadsheetId || 'default';
-      localStorage.removeItem(`pams_data_users_${sheetId}`);
-      localStorage.removeItem(`pams_data_pelanggan_${sheetId}`);
-      localStorage.removeItem(`pams_data_areas_${sheetId}`);
-      localStorage.removeItem(`pams_data_tarifs_${sheetId}`);
-      localStorage.removeItem(`pams_data_abonemen_${sheetId}`);
-      localStorage.removeItem(`pams_data_denda_${sheetId}`);
-      localStorage.removeItem(`pams_data_readings_${sheetId}`);
-      localStorage.removeItem(`pams_data_billing_${sheetId}`);
-      localStorage.removeItem(`pams_data_cash_${sheetId}`);
-      
-      // Reset state to default initial values
+      // Reset in-memory state to default initial values
       onResetData();
       setReadings([]);
       setBillingList([]);
@@ -8504,7 +8378,6 @@ RUNTIME DIAGNOSTIC
                               value={systemNama}
                               onChange={(e) => {
                                 setSystemNama(e.target.value);
-                                localStorage.setItem('pams_system_nama', e.target.value);
                               }}
                               disabled={currentUser?.role !== 'SUPER_ADMIN'}
                               className="w-full bg-slate-950/60 border border-slate-800 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 focus:border-emerald-500 outline-none transition disabled:opacity-60 disabled:cursor-not-allowed"
@@ -8523,7 +8396,6 @@ RUNTIME DIAGNOSTIC
                               value={dbGasUrl}
                               onChange={(e) => {
                                 setDbGasUrl(e.target.value);
-                                localStorage.setItem('pams_google_gas_url', e.target.value);
                               }}
                               disabled={currentUser?.role !== 'SUPER_ADMIN'}
                               className="w-full bg-slate-950/60 border border-slate-800 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-200 focus:border-emerald-500 outline-none transition disabled:opacity-60 disabled:cursor-not-allowed"
@@ -8667,7 +8539,6 @@ RUNTIME DIAGNOSTIC
                               if (newUrl === null) return;
                               const trimmed = newUrl.trim();
                               setDbGasUrl(trimmed);
-                              localStorage.setItem('pams_google_gas_url', trimmed);
                               setDbCheckSteps([]); // Clear checklist
                               showToast('URL Google Apps Script diperbarui. Silakan klik "Simpan / Cek Database" untuk menguji koneksi.', 'success');
                             }}

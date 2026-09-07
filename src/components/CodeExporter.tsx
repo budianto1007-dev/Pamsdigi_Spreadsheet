@@ -52,13 +52,13 @@ export default function CodeExporter() {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h4 className="font-extrabold text-slate-800 text-xs">Arsitektur Modular GAS</h4>
                 <span className="text-[10px] bg-indigo-600 text-white font-extrabold px-2 py-0.5 rounded-full">
-                  v2.2.0
+                  v2.3.2
                 </span>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px] bg-white/80 p-2 rounded-xl border border-indigo-100">
                 <div>
                   <p className="text-slate-400 font-medium">Last Update:</p>
-                  <p className="text-slate-700 font-bold">04 Sept 2026</p>
+                  <p className="text-slate-700 font-bold">06 Sept 2026</p>
                 </div>
                 <div>
                   <p className="text-slate-400 font-medium">Status API:</p>

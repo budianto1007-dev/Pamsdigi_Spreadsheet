@@ -21,7 +21,7 @@ export default function App() {
   const syncSpreadsheetData = useCallback(async () => {
     try {
       const cfg = await getSavedDbConfig();
-      const sheetId = cfg.spreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
+      const sheetId = cfg.spreadsheetId || DEFAULT_SPREADSHEET_ID;
       if (!sheetId) return;
 
       const remoteData = await fetchGvizAllData(sheetId);

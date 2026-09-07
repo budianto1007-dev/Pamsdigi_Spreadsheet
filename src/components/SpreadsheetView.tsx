@@ -12,7 +12,8 @@ import {
   pushDataToSheets, 
   pullDataFromSheets, 
   getAccessToken,
-  setAccessToken
+  setAccessToken,
+  DEFAULT_SPREADSHEET_ID
 } from '../lib/googleSheets';
 
 interface SpreadsheetViewProps {
@@ -84,11 +85,11 @@ export default function SpreadsheetView({
   const [googleUser, setGoogleUser] = useState<any>({ email: 'KPS-PAMSDIGI SuperAdmin' });
   const [isConnecting, setIsConnecting] = useState(false);
   const [spreadsheets, setSpreadsheets] = useState<Array<{ id: string; name: string }>>([]);
-  const [selectedSheetId, setSelectedSheetId] = useState<string>(() => localStorage.getItem('pams_google_sheet_id') || '');
+  const [selectedSheetId, setSelectedSheetId] = useState<string>(DEFAULT_SPREADSHEET_ID);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [isSyncingPush, setIsSyncingPush] = useState(false);
   const [isSyncingPull, setIsSyncingPull] = useState(false);
-  const [autoSync, setAutoSync] = useState<boolean>(() => localStorage.getItem('pams_google_sheet_autosync') === 'true');
+  const [autoSync, setAutoSync] = useState<boolean>(true);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Quick form states
@@ -205,7 +206,6 @@ export default function SpreadsheetView({
       setGoogleUser(null);
       setSpreadsheets([]);
       setSelectedSheetId('');
-      localStorage.removeItem('pams_google_sheet_id');
       showStatus('info', 'Google Account diputuskan.');
     } catch (err: any) {
       showStatus('error', err?.message || 'Gagal memutuskan Google Account.');
@@ -225,10 +225,7 @@ export default function SpreadsheetView({
   const handleSelectSheetId = (id: string) => {
     setSelectedSheetId(id);
     if (id) {
-      localStorage.setItem('pams_google_sheet_id', id);
       showStatus('info', 'Spreadsheet terpilih berhasil dimuat.');
-    } else {
-      localStorage.removeItem('pams_google_sheet_id');
     }
   };
 
@@ -319,7 +316,6 @@ export default function SpreadsheetView({
   const handleToggleAutoSync = () => {
     const nextVal = !autoSync;
     setAutoSync(nextVal);
-    localStorage.setItem('pams_google_sheet_autosync', nextVal ? 'true' : 'false');
     showStatus('info', nextVal ? 'Auto-Sync diaktifkan (Setiap ada entri data baru akan terunggah otomatis).' : 'Auto-Sync dinonaktifkan.');
   };
 

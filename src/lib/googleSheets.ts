@@ -181,65 +181,72 @@ export async function getSavedDbConfig(): Promise<{
   lastConnected: string;
   spreadsheetId: string;
 }> {
-  const localGasUrl = localStorage.getItem('pams_google_gas_url') || '';
-  const lastKnownUrl = localStorage.getItem('pams_last_known_gas_url') || '';
-  const localSyncStatus = localStorage.getItem('pams_db_sync_status') || 'Disconnected';
-
-  // Check if this Vercel deployment has an authoritative environment variable (e.g. VITE_GAS_URL)
+  // Check if this Vercel deployment has an authoritative environment variable (VITE_GAS_URL / VITE_SPREADSHEET_ID)
   const isEnvDriven = Boolean(ENV_GAS_URL && ENV_GAS_URL.startsWith('http'));
 
-  // 1. First poll centralized server config so all devices (HP, desktop, new browsers) sync globally
-  // Only query fallback server file if this deployment is NOT strictly bound by an env variable
+  if (isEnvDriven) {
+    const activeUrl = ENV_GAS_URL;
+    const activeSheetId = ENV_SPREADSHEET_ID || FALLBACK_SPREADSHEET_ID;
+
+    // Direct live poll from the Apps Script Web App for current status & live dynamic spreadsheet name
+    try {
+      const directUrl = `${activeUrl}${activeUrl.includes('?') ? '&' : '?'}action=getConfig&t=${Date.now()}`;
+      const directRes = await fetch(directUrl, { method: 'GET', redirect: 'follow' });
+      if (directRes.ok) {
+        const json = await directRes.json();
+        if (json && json.success && json.config) {
+          const cfg = json.config;
+          const liveName = (cfg.spreadsheetName && cfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? cfg.spreadsheetName : 'Db_pamsdigi';
+          return {
+            gasUrl: activeUrl,
+            spreadsheetName: liveName,
+            syncStatus: cfg.syncStatus === 'Connected' ? 'Connected' : 'Disconnected',
+            lastConnected: cfg.lastConnected || new Date().toLocaleString('id-ID'),
+            spreadsheetId: cfg.spreadsheetId || activeSheetId
+          };
+        }
+      }
+    } catch (_) {}
+
+    return {
+      gasUrl: activeUrl,
+      spreadsheetName: 'Db_pamsdigi',
+      syncStatus: 'Connected',
+      lastConnected: new Date().toLocaleString('id-ID'),
+      spreadsheetId: activeSheetId
+    };
+  }
+
+  // 1. First poll centralized server config or fallback config
   let serverGasUrl = '';
   let serverSyncStatus = '';
   let serverSpreadsheetName = '';
   let serverLastConnected = '';
   let serverSpreadsheetId = '';
 
-  if (!isEnvDriven) {
-    try {
-      const serverRes = await fetch('/api/db-config', { cache: 'no-store' })
-        .catch(() => fetch('/db_config.json?t=' + Date.now(), { cache: 'no-store' }));
-      if (serverRes && serverRes.ok) {
-        const sJson = await serverRes.json();
-        if (sJson && sJson.gasUrl && sJson.gasUrl.startsWith('http')) {
-          serverGasUrl = sJson.gasUrl;
-          serverSyncStatus = sJson.syncStatus || 'Connected';
-          serverSpreadsheetName = (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? sJson.spreadsheetName : 'Db_pamsdigi';
-          serverLastConnected = sJson.lastConnected || '';
-          serverSpreadsheetId = sJson.spreadsheetId || '';
-        }
+  try {
+    const serverRes = await fetch('/api/db-config', { cache: 'no-store' })
+      .catch(() => fetch('/db_config.json?t=' + Date.now(), { cache: 'no-store' }));
+    if (serverRes && serverRes.ok) {
+      const sJson = await serverRes.json();
+      if (sJson && sJson.gasUrl && sJson.gasUrl.startsWith('http')) {
+        serverGasUrl = sJson.gasUrl;
+        serverSyncStatus = sJson.syncStatus || 'Connected';
+        serverSpreadsheetName = (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? sJson.spreadsheetName : 'Db_pamsdigi';
+        serverLastConnected = sJson.lastConnected || '';
+        serverSpreadsheetId = sJson.spreadsheetId || '';
       }
-    } catch (_) {}
-  }
+    }
+  } catch (_) {}
 
   // Prioritize URLs to poll for live spreadsheet connection
   const urlsToPoll: string[] = [];
-  if (ENV_GAS_URL && ENV_GAS_URL.startsWith('http')) urlsToPoll.push(ENV_GAS_URL);
-  if (serverGasUrl && serverGasUrl.startsWith('http') && !urlsToPoll.includes(serverGasUrl)) urlsToPoll.push(serverGasUrl);
+  if (serverGasUrl && serverGasUrl.startsWith('http')) urlsToPoll.push(serverGasUrl);
   if (DEFAULT_GAS_URL && DEFAULT_GAS_URL.startsWith('http') && !urlsToPoll.includes(DEFAULT_GAS_URL)) urlsToPoll.push(DEFAULT_GAS_URL);
-  if (!isEnvDriven && localGasUrl && localGasUrl.startsWith('http') && !urlsToPoll.includes(localGasUrl)) urlsToPoll.push(localGasUrl);
-  if (!isEnvDriven && lastKnownUrl && lastKnownUrl.startsWith('http') && !urlsToPoll.includes(lastKnownUrl)) urlsToPoll.push(lastKnownUrl);
-
-  if (urlsToPoll.length === 0) {
-    localStorage.setItem('pams_google_gas_url', DEFAULT_GAS_URL);
-    localStorage.setItem('pams_db_sheet_name', 'Belum Terhubung');
-    localStorage.setItem('pams_db_sync_status', 'Disconnected');
-    localStorage.setItem('pams_db_last_connected', 'Belum Terhubung');
-
-    return {
-      gasUrl: DEFAULT_GAS_URL,
-      spreadsheetName: 'Belum Terhubung',
-      syncStatus: 'Disconnected',
-      lastConnected: 'Belum Terhubung',
-      spreadsheetId: ENV_SPREADSHEET_ID || ''
-    };
-  }
 
   for (const targetUrl of urlsToPoll) {
     try {
       let json: any = null;
-      // Direct client-side fetch to Google Apps Script Web App
       try {
         const directUrl = `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}action=getConfig&t=${Date.now()}`;
         const directRes = await fetch(directUrl, { method: 'GET', redirect: 'follow' });
@@ -254,16 +261,10 @@ export async function getSavedDbConfig(): Promise<{
         const activeUrl = cfg.gasUrl && typeof cfg.gasUrl === 'string' && cfg.gasUrl.trim().startsWith('http') ? cfg.gasUrl.trim() : (status === 'Connected' ? targetUrl : '');
 
         if (status === 'Connected' && activeUrl) {
-          const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || localStorage.getItem('pams_db_sheet_name') || 'Db_pamsdigi';
+          const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || 'Db_pamsdigi';
           const sheetName = (rawSheetName && rawSheetName !== 'PAMSDIGI Spreadsheet') ? rawSheetName : 'Db_pamsdigi';
-          const lastConn = cfg.lastConnected || serverLastConnected || localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID');
-          const sheetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || serverSpreadsheetId || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
-
-          localStorage.setItem('pams_google_gas_url', activeUrl);
-          localStorage.setItem('pams_last_known_gas_url', activeUrl);
-          localStorage.setItem('pams_db_sheet_name', sheetName);
-          localStorage.setItem('pams_db_sync_status', 'Connected');
-          localStorage.setItem('pams_db_last_connected', lastConn);
+          const lastConn = cfg.lastConnected || serverLastConnected || new Date().toLocaleString('id-ID');
+          const sheetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || serverSpreadsheetId || DEFAULT_SPREADSHEET_ID;
 
           return {
             gasUrl: activeUrl,
@@ -273,12 +274,6 @@ export async function getSavedDbConfig(): Promise<{
             spreadsheetId: sheetId
           };
         } else if (status === 'Disconnected') {
-          // Server explicitly returned Disconnected status (Global Reset)
-          localStorage.setItem('pams_google_gas_url', DEFAULT_GAS_URL);
-          localStorage.setItem('pams_db_sheet_name', 'Belum Terhubung');
-          localStorage.setItem('pams_db_sync_status', 'Disconnected');
-          localStorage.setItem('pams_db_last_connected', 'Belum Terhubung');
-
           return {
             gasUrl: DEFAULT_GAS_URL,
             spreadsheetName: 'Belum Terhubung',
@@ -291,7 +286,7 @@ export async function getSavedDbConfig(): Promise<{
     } catch (_) {}
   }
 
-  // Network fail-safe: if request fails due to temporary offline or network glitch, use server config or cached local
+  // Network fail-safe: if request fails due to temporary offline or network glitch, use server config or defaults
   if (serverSyncStatus === 'Connected' && serverGasUrl) {
     const sName = (serverSpreadsheetName && serverSpreadsheetName !== 'PAMSDIGI Spreadsheet') ? serverSpreadsheetName : 'Db_pamsdigi';
     return {
@@ -303,23 +298,11 @@ export async function getSavedDbConfig(): Promise<{
     };
   }
 
-  if (localSyncStatus === 'Connected' && localGasUrl) {
-    const lName = localStorage.getItem('pams_db_sheet_name');
-    const safeLocalName = (lName && lName !== 'PAMSDIGI Spreadsheet') ? lName : 'Db_pamsdigi';
-    return {
-      gasUrl: localGasUrl,
-      spreadsheetName: safeLocalName,
-      syncStatus: 'Connected',
-      lastConnected: localStorage.getItem('pams_db_last_connected') || new Date().toLocaleString('id-ID'),
-      spreadsheetId: ENV_SPREADSHEET_ID || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID
-    };
-  }
-
   return {
-    gasUrl: localGasUrl || DEFAULT_GAS_URL,
-    spreadsheetName: 'Belum Terhubung',
-    syncStatus: 'Disconnected',
-    lastConnected: 'Belum Terhubung',
+    gasUrl: DEFAULT_GAS_URL,
+    spreadsheetName: 'Db_pamsdigi',
+    syncStatus: 'Connected',
+    lastConnected: new Date().toLocaleString('id-ID'),
     spreadsheetId: ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID
   };
 }
@@ -363,12 +346,10 @@ export async function saveGlobalDbConfig(config: {
     }).catch(_ => {});
   } catch (_) {}
 
-  // 2. Direct client-side GAS sync
+  // 2. Direct client-side GAS sync (write directly to sheet 'Konfigurasi' via Apps Script action=saveConfig)
   const urlsToUpdate = new Set<string>();
   if (config.gasUrl && config.gasUrl.startsWith('http')) urlsToUpdate.add(config.gasUrl);
   if (DEFAULT_GAS_URL && DEFAULT_GAS_URL.startsWith('http')) urlsToUpdate.add(DEFAULT_GAS_URL);
-  const lastKnown = localStorage.getItem('pams_last_known_gas_url');
-  if (lastKnown && lastKnown.startsWith('http')) urlsToUpdate.add(lastKnown);
 
   for (const url of urlsToUpdate) {
     try {
@@ -384,19 +365,13 @@ export async function saveGlobalDbConfig(config: {
       await fetch(directUrl, { method: 'GET', redirect: 'follow' }).catch(_ => {});
     } catch (_) {}
   }
-
-  localStorage.setItem('pams_google_gas_url', config.gasUrl);
-  localStorage.setItem('pams_last_known_gas_url', config.gasUrl);
-  localStorage.setItem('pams_db_sheet_name', payloadConfig.spreadsheetName);
-  localStorage.setItem('pams_db_sync_status', 'Connected');
-  localStorage.setItem('pams_db_last_connected', payloadConfig.lastConnected);
 }
 
 /**
  * Disconnects global database configuration in Google Apps Script PropertiesService and server
  */
 export async function disconnectGlobalDbConfig(): Promise<boolean> {
-  const currentGasUrl = localStorage.getItem('pams_google_gas_url') || localStorage.getItem('pams_last_known_gas_url') || DEFAULT_GAS_URL;
+  const currentGasUrl = await getSavedGasUrl() || DEFAULT_GAS_URL;
 
   // 1. Update centralized server
   try {
@@ -416,8 +391,6 @@ export async function disconnectGlobalDbConfig(): Promise<boolean> {
   const urlsToReset = new Set<string>();
   if (currentGasUrl && currentGasUrl.startsWith('http')) urlsToReset.add(currentGasUrl);
   if (DEFAULT_GAS_URL && DEFAULT_GAS_URL.startsWith('http')) urlsToReset.add(DEFAULT_GAS_URL);
-  const lastKnown = localStorage.getItem('pams_last_known_gas_url');
-  if (lastKnown && lastKnown.startsWith('http')) urlsToReset.add(lastKnown);
 
   for (const url of urlsToReset) {
     try {
@@ -426,14 +399,6 @@ export async function disconnectGlobalDbConfig(): Promise<boolean> {
     } catch (_) {}
   }
 
-  localStorage.setItem('pams_google_gas_url', '');
-  if (currentGasUrl) {
-    localStorage.setItem('pams_last_known_gas_url', currentGasUrl);
-  }
-  localStorage.setItem('pams_google_sheet_id', '');
-  localStorage.setItem('pams_db_sheet_name', 'Belum Terhubung');
-  localStorage.setItem('pams_db_sync_status', 'Disconnected');
-  localStorage.setItem('pams_db_last_connected', 'Belum Terhubung');
   return true;
 }
 
@@ -529,11 +494,9 @@ export async function disconnectGoogleAccount(): Promise<void> {
  * Lists the active spreadsheet ID in the database selection list.
  */
 export async function listSpreadsheets(): Promise<Array<{ id: string; name: string }>> {
-  const activeId = localStorage.getItem('pams_google_sheet_id');
-  const rawActiveName = localStorage.getItem('pams_db_sheet_name');
-  const activeName = (!rawActiveName || rawActiveName === 'PAMSDIGI Spreadsheet') ? 'Db_pamsdigi' : rawActiveName;
-  if (activeId) {
-    return [{ id: activeId, name: activeName }];
+  const cfg = await getSavedDbConfig();
+  if (cfg.spreadsheetId) {
+    return [{ id: cfg.spreadsheetId, name: cfg.spreadsheetName || 'Db_pamsdigi' }];
   }
   return [];
 }
@@ -554,7 +517,7 @@ export async function initializeSheetsAndHeaders(spreadsheetId: string, gasUrl?:
     targetGasUrl = spreadsheetId;
   }
   if (!targetGasUrl) {
-    targetGasUrl = (await getSavedGasUrl()) || localStorage.getItem('pams_google_gas_url') || '';
+    targetGasUrl = (await getSavedGasUrl()) || DEFAULT_GAS_URL;
   }
 
   if (!targetGasUrl) {
@@ -641,24 +604,10 @@ export async function pushDataToSheets(
     },
   };
 
-  // 1. Save to LocalStorage for instant local cache & offline resilience
-  try {
-    localStorage.setItem('pams_data_users_default', JSON.stringify(payloadData.users));
-    localStorage.setItem('pams_data_pelanggan_default', JSON.stringify(payloadData.pelanggan));
-    localStorage.setItem('pams_data_areas_default', JSON.stringify(payloadData.areas));
-    localStorage.setItem('pams_data_tarifs_default', JSON.stringify(payloadData.tarifs));
-    localStorage.setItem('pams_data_abonemen_default', JSON.stringify(payloadData.abonemen));
-    localStorage.setItem('pams_data_denda_default', JSON.stringify(payloadData.denda));
-    localStorage.setItem('pams_data_readings_default', JSON.stringify(payloadData.readings));
-    localStorage.setItem('pams_data_billing_default', JSON.stringify(payloadData.billingList));
-    localStorage.setItem('pams_data_cash_default', JSON.stringify(payloadData.cashTransactions));
-  } catch (_) {}
-
-  // 2. Push directly to Google Apps Script Web App -> Google Spreadsheet
-  const syncStatus = localStorage.getItem('pams_db_sync_status');
-  const gasUrl = (await getSavedGasUrl()) || localStorage.getItem('pams_google_gas_url') || '';
+  // 1. Send data directly to Google Apps Script Web App -> Google Spreadsheet
+  const gasUrl = await getSavedGasUrl();
   
-  if (syncStatus !== 'Disconnected' && gasUrl && gasUrl.startsWith('http')) {
+  if (gasUrl && gasUrl.startsWith('http')) {
     try {
       const res = await fetch(gasUrl, {
         method: 'POST',
@@ -751,7 +700,7 @@ export async function fetchGvizAllData(spreadsheetId?: string): Promise<{
   let targetId = (spreadsheetId || '').trim();
   if (!targetId) {
     const cfg = await getSavedDbConfig();
-    targetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || localStorage.getItem('pams_google_sheet_id') || DEFAULT_SPREADSHEET_ID;
+    targetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
   }
   if (!targetId) {
     targetId = ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
@@ -970,10 +919,9 @@ export async function pullDataFromSheets(spreadsheetId?: string): Promise<{
   }
 
   // 2. Secondary fallback via GAS Web App action=readAll
-  const syncStatus = localStorage.getItem('pams_db_sync_status');
-  const gasUrl = (await getSavedGasUrl()) || localStorage.getItem('pams_google_gas_url') || '';
+  const gasUrl = await getSavedGasUrl();
 
-  if (syncStatus !== 'Disconnected' && gasUrl && gasUrl.startsWith('http')) {
+  if (gasUrl && gasUrl.startsWith('http')) {
     try {
       const directUrl = `${gasUrl}${gasUrl.includes('?') ? '&' : '?'}action=readAll&t=${Date.now()}`;
       const directRes = await fetch(directUrl, { method: 'GET', redirect: 'follow' });
