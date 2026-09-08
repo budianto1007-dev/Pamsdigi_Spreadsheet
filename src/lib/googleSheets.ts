@@ -256,16 +256,13 @@ export async function getSavedDbConfig(): Promise<{
     }
   } catch (_) {}
 
-  // Network fail-safe: if temporary offline, return connected status using cached candidate URL
-  const cachedName = (typeof window !== 'undefined' ? localStorage.getItem('pams_db_sheet_name') : '') || serverSpreadsheetName || 'Db_pamsdigi';
-  const cachedSheetId = (typeof window !== 'undefined' ? localStorage.getItem('pams_google_sheet_id') : '') || serverSpreadsheetId || '';
-  
+  // If failed to verify connection directly from Google Apps Script, do NOT mark as connected
   return {
     gasUrl: candidateUrl,
-    spreadsheetName: cachedName,
-    syncStatus: 'Connected',
-    lastConnected: new Date().toLocaleString('id-ID'),
-    spreadsheetId: cachedSheetId
+    spreadsheetName: 'Belum Terhubung',
+    syncStatus: 'Disconnected',
+    lastConnected: 'Belum Terhubung',
+    spreadsheetId: ''
   };
 }
 
@@ -282,25 +279,80 @@ export async function getSavedGasUrl(): Promise<string> {
 
 /**
  * Saves global database configuration directly to Google Apps Script (sheet Konfigurasi) and server
+ * Performs strict read-back verification on cell B2 of sheet Konfigurasi.
  */
 export async function saveGlobalDbConfig(config: {
   gasUrl: string;
   spreadsheetName?: string;
   spreadsheetId?: string;
   lastConnected?: string;
-}): Promise<void> {
+}): Promise<{ success: boolean; message: string; verifiedGasUrl?: string }> {
+  const cleanGasUrl = (config.gasUrl || '').trim();
+  if (!cleanGasUrl || !cleanGasUrl.startsWith('http')) {
+    throw new Error('URL Google Apps Script tidak valid.');
+  }
+
   const rawName = config.spreadsheetName || 'Db_pamsdigi';
   const cleanName = rawName === 'PAMSDIGI Spreadsheet' ? 'Db_pamsdigi' : rawName;
-  const payloadConfig = {
-    gasUrl: config.gasUrl,
+  const lastConn = config.lastConnected || new Date().toLocaleString('id-ID');
+
+  // Step 1: Tulis langsung ke sheet 'Konfigurasi' Google Spreadsheet via action=saveConfig
+  const queryParams = new URLSearchParams({
+    action: 'saveConfig',
     spreadsheetName: cleanName,
+    spreadsheetId: config.spreadsheetId || '',
+    syncStatus: 'Connected',
+    gasUrl: cleanGasUrl,
+    t: String(Date.now())
+  });
+  const directUrl = `${cleanGasUrl}${cleanGasUrl.includes('?') ? '&' : '?'}${queryParams.toString()}`;
+  
+  const writeRes = await fetch(directUrl, { method: 'GET', redirect: 'follow' });
+  if (!writeRes.ok) {
+    throw new Error(`Google Apps Script merespons dengan HTTP ${writeRes.status}`);
+  }
+  const writeText = await writeRes.text();
+  let writeJson: any = null;
+  try { writeJson = JSON.parse(writeText); } catch (_) {}
+
+  if (!writeJson || !writeJson.success) {
+    throw new Error(writeJson?.message || 'Gagal menyimpan konfigurasi ke sheet Konfigurasi.');
+  }
+
+  // Step 2: VERIFIKASI DUA ARAH (Read-back verification dari sel B2 sheet Konfigurasi)
+  const verifyUrl = `${cleanGasUrl}${cleanGasUrl.includes('?') ? '&' : '?'}action=getConfig&t=${Date.now()}`;
+  const verifyRes = await fetch(verifyUrl, { method: 'GET', redirect: 'follow' });
+  if (!verifyRes.ok) {
+    throw new Error(`Gagal membaca ulang konfigurasi dari Google Apps Script (HTTP ${verifyRes.status})`);
+  }
+  const verifyText = await verifyRes.text();
+  let verifyJson: any = null;
+  try { verifyJson = JSON.parse(verifyText); } catch (_) {}
+
+  if (!verifyJson || !verifyJson.success || !verifyJson.config) {
+    throw new Error('Gagal memverifikasi konfigurasi dari sheet Konfigurasi.');
+  }
+
+  const verifiedGasUrl = (verifyJson.config.gasUrl || '').trim();
+  const verifiedSheetId = verifyJson.config.spreadsheetId || '';
+  const verifiedSheetName = verifyJson.config.spreadsheetName || cleanName;
+
+  if (verifiedGasUrl !== cleanGasUrl) {
+    throw new Error(
+      `Verifikasi Gagal: Nilai gasUrl yang terbaca di sel B2 sheet Konfigurasi (${verifiedGasUrl || 'KOSONG'}) belum terupdate ke URL baru (${cleanGasUrl}). Pastikan Anda telah deploy ulang Apps Script dengan versi terbaru v2.3.4 (Akses: Anyone/Siapa saja).`
+    );
+  }
+
+  // Step 3: Simpan status persisten setelah verifikasi fisik terbukti sukses 100%
+  const payloadConfig = {
+    gasUrl: cleanGasUrl,
+    spreadsheetName: verifiedSheetName,
     syncStatus: 'Connected' as const,
-    lastConnected: config.lastConnected || new Date().toLocaleString('id-ID'),
-    spreadsheetId: config.spreadsheetId || ''
+    lastConnected: lastConn,
+    spreadsheetId: verifiedSheetId
   };
 
-  // 1. Origin storage (isolated per deployment link domain)
-  if (typeof window !== 'undefined' && payloadConfig.gasUrl) {
+  if (typeof window !== 'undefined') {
     try {
       localStorage.setItem('pams_google_gas_url', payloadConfig.gasUrl);
       localStorage.setItem('pams_db_sync_status', 'Connected');
@@ -309,30 +361,20 @@ export async function saveGlobalDbConfig(config: {
     } catch (_) {}
   }
 
-  // 2. Save to Centralized Server API (/api/db-config) if present
+  // Simpan ke centralized server API jika ada
   try {
     await fetch('/api/db-config', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadConfig)
-    }).catch(_ => {});
+    }).catch(() => {});
   } catch (_) {}
 
-  // 3. Direct client-side GAS sync (writes directly to sheet 'Konfigurasi' of THIS specific spreadsheet only)
-  if (config.gasUrl && config.gasUrl.startsWith('http')) {
-    try {
-      const queryParams = new URLSearchParams({
-        action: 'saveConfig',
-        spreadsheetName: payloadConfig.spreadsheetName,
-        spreadsheetId: payloadConfig.spreadsheetId,
-        syncStatus: 'Connected',
-        gasUrl: config.gasUrl,
-        t: String(Date.now())
-      });
-      const directUrl = `${config.gasUrl}${config.gasUrl.includes('?') ? '&' : '?'}${queryParams.toString()}`;
-      await fetch(directUrl, { method: 'GET', redirect: 'follow' }).catch(_ => {});
-    } catch (_) {}
-  }
+  return {
+    success: true,
+    message: 'Konfigurasi terverifikasi dan berhasil disimpan ke sheet Konfigurasi (B2).',
+    verifiedGasUrl
+  };
 }
 
 /**
@@ -548,10 +590,13 @@ export async function pushDataToSheets(
     };
     konfigurasi?: Array<{ key: string; value: string; deskripsi?: string }>;
   }
-): Promise<void> {
+): Promise<{ success: boolean; message: string }> {
   const data = maybeData || spreadsheetIdOrData;
 
   const gasUrl = await getSavedGasUrl();
+  if (!gasUrl || !gasUrl.startsWith('http')) {
+    throw new Error('Database Google Spreadsheet belum terhubung. Silakan hubungkan database terlebih dahulu.');
+  }
 
   const passedKonfig = data.konfigurasi || [];
   const mergedKonfig = [...passedKonfig];
@@ -588,28 +633,42 @@ export async function pushDataToSheets(
   };
 
   // 1. Send data directly to Google Apps Script Web App -> Google Spreadsheet
-  if (gasUrl && gasUrl.startsWith('http')) {
-    try {
-      const res = await fetch(gasUrl, {
-        method: 'POST',
-        redirect: 'follow',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify({
-          action: 'pushAll',
-          data: payloadData,
-        }),
-      });
-      if (res && res.ok) {
-        drainOfflineQueue().catch(_ => {});
-      } else {
-        enqueueOfflineAction({ type: 'pushAll', data: payloadData });
-      }
-    } catch (_) {
-      // Saat koneksi HP/browser offline, simpan ke antrean offline
+  try {
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify({
+        action: 'pushAll',
+        data: payloadData,
+      }),
+    });
+
+    if (!res.ok) {
       enqueueOfflineAction({ type: 'pushAll', data: payloadData });
+      throw new Error(`Google Apps Script merespons dengan HTTP ${res.status}`);
     }
+
+    const resText = await res.text();
+    let json: any = null;
+    try { json = JSON.parse(resText); } catch (_) {}
+
+    if (json && json.success === false) {
+      enqueueOfflineAction({ type: 'pushAll', data: payloadData });
+      throw new Error(json.message || 'Google Spreadsheet gagal menyimpan perubahan data.');
+    }
+
+    drainOfflineQueue().catch(() => {});
+    return {
+      success: true,
+      message: json?.message || 'Data berhasil disimpan ke Google Spreadsheet.'
+    };
+  } catch (err: any) {
+    // Saat koneksi HP/browser offline atau error, simpan ke antrean offline
+    enqueueOfflineAction({ type: 'pushAll', data: payloadData });
+    throw new Error(err.message || 'Gagal menyimpan perubahan ke Google Spreadsheet.');
   }
 }
 

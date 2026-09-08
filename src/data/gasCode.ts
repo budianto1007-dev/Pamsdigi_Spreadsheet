@@ -8,16 +8,16 @@ export const gasFiles: GASFile[] = [
     content: `/**
  * PAMSDIGI - PAMS Digital Indonesia
  * REST API & Google Spreadsheet Database Integration
- * Version: v2.3.3
+ * Version: v2.3.4
  * Last Updated: 08 September 2026
- * Status: Production Ready - Multi-Tenant Isolated Sync & Sheet Konfigurasi Storage
+ * Status: Production Ready - Multi-Tenant Isolated Sync & Strict Sheet Konfigurasi Storage
  * 
- * Change Log v2.3.3:
- * - [FIX] Sheet Konfigurasi Persistence: Memastikan gasUrl yang sudah terhubung tidak pernah terhapus atau tertimpa string kosong saat sinkronisasi background (pushAll/readAll).
- * - [UPDATE] Multi-Tenant Architecture: Mendukung multi-deployment independen (1 link Vercel -> 1 Google Spreadsheet) secara terisolasi tanpa saling menimpa.
- * - [UPDATE] Dynamic Hak Akses & Menu Matrix: Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet 'Konfigurasi' secara global.
+ * Change Log v2.3.4:
+ * - [FIX] Immediate Persistence via SpreadsheetApp.flush(): Memastikan seluruh operasi tulis sel dan baris langsung disimpan secara fisik ke Google Drive tanpa jeda buffer.
+ * - [FIX] Strict Read/Write Verification: Sel B2 gasUrl di sheet Konfigurasi dipastikan langsung terisi dan terverifikasi secara atomik.
+ * - [FIX] Multi-Tenant Isolation (1 Link - 1 Spreadsheet): Setiap link deployment memiliki spreadsheet independen yang konfigurasinya terbaca dan tertulis eksklusif ke sheet Konfigurasi masing-masing.
+ * - [UPDATE] Sheet Konfigurasi as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
  * - [UPDATE] Live Dynamic Spreadsheet Name: Memastikan nama database langsung membaca nama live file spreadsheet Google Drive (Db_pamsdigi) secara dinamis melalui db.getName() dan menyimpannya ke sheet Konfigurasi.
- * - [UPDATE] Konfigurasi Sheet as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
  * - [UPDATE] Default Admin Seeding: Otomatis mengisi akun admin default (username: admin, password: admin) jika sheet Users baru dibuat.
  * - [UPDATE] Live Authentication API: Endpoint login langsung ke sheet Users secara real-time dari HP petugas.
  * - [UPDATE] Full Spreadsheet Database CRUD: Menangani transaksi pushAll/readAll serta manajemen sinkronisasi global lintas perangkat.
@@ -31,7 +31,7 @@ export const gasFiles: GASFile[] = [
  * 6. Klik Terapkan (Deploy) -> Penerapan Baru (New Deployment).
  * 7. Pilih Jenis: Aplikasi Web (Web App).
  * 8. Konfigurasi Deployment:
- *    - Deskripsi: PAMSDIGI Web API v2.3.3
+ *    - Deskripsi: PAMSDIGI Web API v2.3.4
  *    - Jalankan sebagai (Execute as): Saya (Me)
  *    - Siapa yang memiliki akses (Who has access): Siapa saja (Anyone) -> WAJIB!
  * 9. Klik Terapkan (Deploy), berikan izin Google (Authorize Access), lalu Salin URL Aplikasi Web yang berakhiran /exec.
@@ -76,6 +76,7 @@ function doGet(e) {
       });
 
       result.success = true;
+      result.config = getStoredConfig(db);
       result.message = "Konfigurasi berhasil disimpan ke sheet Konfigurasi.";
     } else if (action === "resetConfig" || action === "clearConfig") {
       resetStoredConfig(db);
@@ -86,7 +87,7 @@ function doGet(e) {
       var liveDbName = db.getName() || "Db_pamsdigi";
       if (liveDbName === "PAMSDIGI Spreadsheet") liveDbName = "Db_pamsdigi";
       result.success = true;
-      result.message = "Google Apps Script Web App PAMSDIGI v2.3.3 terhubung & aktif!";
+      result.message = "Google Apps Script Web App PAMSDIGI v2.3.4 terhubung & aktif!";
       result.timestamp = new Date().toISOString();
       result.spreadsheetName = liveDbName;
       result.data = readAllSheetsData(db);
@@ -384,6 +385,9 @@ function saveStoredConfig(db, cfg) {
       sheet.appendRow([item.key, item.val, item.desc, nowIso]);
     }
   });
+
+  // Paksa simpan fisik ke Google Drive seketika tanpa delay buffer
+  SpreadsheetApp.flush();
 }
 
 /**
@@ -582,6 +586,9 @@ function saveAllSheetsData(db, data) {
     });
     saveStoredConfig(db, cfgObj);
   }
+
+  // Paksa simpan seluruh mutasi sheet fisik ke Google Drive seketika
+  SpreadsheetApp.flush();
 }
 
 /**

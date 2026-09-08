@@ -13,6 +13,7 @@ import {
   pullDataFromSheets, 
   getAccessToken,
   setAccessToken,
+  getSavedDbConfig,
   DEFAULT_SPREADSHEET_ID
 } from '../lib/googleSheets';
 
@@ -124,8 +125,14 @@ export default function SpreadsheetView({
   const [editDendaHari, setEditDendaHari] = useState(denda.hariKeterlambatan);
   const [editDendaStatus, setEditDendaStatus] = useState<'Aktif' | 'Nonaktif'>(denda.status);
 
-  // Monitor Google Authentication State
+  // Monitor Google Authentication State & Saved Database Config
   useEffect(() => {
+    getSavedDbConfig().then(cfg => {
+      if (cfg.spreadsheetId) {
+        setSelectedSheetId(cfg.spreadsheetId);
+      }
+    });
+
     const token = getAccessToken();
     const storedUser = localStorage.getItem('pams_google_user');
     if (token && storedUser) {

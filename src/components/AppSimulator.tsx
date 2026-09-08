@@ -1539,7 +1539,7 @@ RUNTIME DIAGNOSTIC
     addLog('request', `google.script.run.${functionName}(${JSON.stringify(args) || ''})`);
     const delay = 500 + Math.random() * 500;
 
-    setTimeout(() => {
+    setTimeout(async () => {
       if (networkErrorSimulation) {
         const err = new Error('Connection timeout! Google Sheets API is currently unreachable.');
         addLog('error', `withFailureHandler: ${err.message}`);
@@ -1645,7 +1645,6 @@ RUNTIME DIAGNOSTIC
           const exists = pelanggan.some(p => p.noPelanggan === pel.noPelanggan);
           let updatedPelList: PelangganRow[];
           if (exists) {
-            onUpdatePelanggan(pel);
             updatedPelList = pelanggan.map(p => p.noPelanggan === pel.noPelanggan ? pel : p);
           } else {
             if (pelanganNoPelExists(pel.noPelanggan)) {
@@ -1654,169 +1653,257 @@ RUNTIME DIAGNOSTIC
               onSuccess(resp);
               return;
             }
-            onAddPelanggan(pel);
             updatedPelList = [...pelanggan, pel];
           }
-          pushDataToSheets({
-            users, pelanggan: updatedPelList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Berhasil menyimpan pelanggan: ${pel.nama}` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan: updatedPelList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            if (exists) {
+              onUpdatePelanggan(pel);
+            } else {
+              onAddPelanggan(pel);
+            }
+            const resp = { success: true, message: `Berhasil menyimpan pelanggan: ${pel.nama}` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menyimpan ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'deletePelanggan') {
           const noPel = args as string;
-          onDeletePelanggan(noPel);
           const updatedPelList = pelanggan.filter(p => p.noPelanggan !== noPel);
-          pushDataToSheets({
-            users, pelanggan: updatedPelList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Pelanggan ${noPel} berhasil dihapus dari database.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan: updatedPelList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onDeletePelanggan(noPel);
+            const resp = { success: true, message: `Pelanggan ${noPel} berhasil dihapus dari database.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menghapus dari Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'bulkImportPelanggan') {
           const validList = args as PelangganRow[];
-          onReplacePelanggan(validList);
-          pushDataToSheets({
-            users, pelanggan: validList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Berhasil mengganti seluruh data lama dan mengimport ${validList.length} data pelanggan ke Google Sheet!` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan: validList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onReplacePelanggan(validList);
+            const resp = { success: true, message: `Berhasil mengimport ${validList.length} data pelanggan ke Google Sheet!` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal import ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'saveArea') {
           const newArea = args as AreaRow;
-          onAddArea(newArea);
           const updatedAreas = [...areas, newArea];
-          pushDataToSheets({
-            users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Area ${newArea.nama} berhasil disimpan ke Spreadsheet.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onAddArea(newArea);
+            const resp = { success: true, message: `Area ${newArea.nama} berhasil disimpan ke Spreadsheet.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menyimpan area ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'updateArea') {
           const updatedArea = args as AreaRow;
-          onUpdateArea(updatedArea);
           const updatedAreas = areas.map(a => a.id === updatedArea.id ? updatedArea : a);
-          pushDataToSheets({
-            users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Area ${updatedArea.nama} berhasil diperbarui di Spreadsheet.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onUpdateArea(updatedArea);
+            const resp = { success: true, message: `Area ${updatedArea.nama} berhasil diperbarui di Spreadsheet.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal memperbarui area di Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'deleteArea') {
           const id = args as string;
-          onDeleteArea(id);
           const updatedAreas = areas.filter(a => a.id !== id);
-          pushDataToSheets({
-            users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Baris area ID ${id} berhasil dihapus dari Google Sheets.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onDeleteArea(id);
+            const resp = { success: true, message: `Baris area ID ${id} berhasil dihapus dari Google Sheets.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menghapus area di Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'saveTarif') {
           const t = args as TarifRow;
-          onAddTarif(t);
           const updatedTarifs = [...tarifs, t];
-          pushDataToSheets({
-            users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Skema tarif ${t.golongan} berhasil disimpan ke Spreadsheet.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onAddTarif(t);
+            const resp = { success: true, message: `Skema tarif ${t.golongan} berhasil disimpan ke Spreadsheet.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menyimpan tarif ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'updateTarif') {
           const t = args as TarifRow;
-          onUpdateTarif(t);
           const updatedTarifs = tarifs.map(tf => tf.id === t.id ? t : tf);
-          pushDataToSheets({
-            users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Skema tarif ${t.golongan} berhasil diperbarui.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onUpdateTarif(t);
+            const resp = { success: true, message: `Skema tarif ${t.golongan} berhasil diperbarui.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal memperbarui tarif di Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'deleteTarif') {
           const id = args as string;
-          onDeleteTarif(id);
           const updatedTarifs = tarifs.filter(t => t.id !== id);
-          pushDataToSheets({
-            users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Tarif ID ${id} telah dihapus dari database.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onDeleteTarif(id);
+            const resp = { success: true, message: `Tarif ID ${id} telah dihapus dari database.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menghapus tarif dari Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'saveAbonemen') {
           const ab = args as AbonemenRow;
-          onUpdateAbonemen(ab);
-          pushDataToSheets({
-            users, pelanggan, areas, tarifs, abonemen: ab, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Abonemen nominal Rp ${ab.nominal.toLocaleString('id-ID')} disimpan.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas, tarifs, abonemen: ab, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onUpdateAbonemen(ab);
+            const resp = { success: true, message: `Abonemen nominal Rp ${ab.nominal.toLocaleString('id-ID')} disimpan.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menyimpan abonemen ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'saveDenda') {
           const de = args as DendaRow;
-          onUpdateDenda(de);
-          pushDataToSheets({
-            users, pelanggan, areas, tarifs, abonemen, denda: de, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `Pengaturan denda diperbarui (Status: ${de.status}, Rp ${de.nominal}).` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users, pelanggan, areas, tarifs, abonemen, denda: de, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onUpdateDenda(de);
+            const resp = { success: true, message: `Pengaturan denda diperbarui (Status: ${de.status}, Rp ${de.nominal}).` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menyimpan denda ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'saveUser') {
           const u = args as UserRow;
-          onAddUser(u);
           const updatedUsers = [...users, u];
-          pushDataToSheets({
-            users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `User ${u.nama} berhasil didaftarkan.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onAddUser(u);
+            const resp = { success: true, message: `User ${u.nama} berhasil didaftarkan.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal mendaftarkan user ke Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'updateUser') {
           const u = args as UserRow;
-          onUpdateUser(u);
           const updatedUsers = users.map(us => us.username === u.username ? u : us);
-          pushDataToSheets({
-            users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `User ${u.nama} berhasil diperbarui.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onUpdateUser(u);
+            const resp = { success: true, message: `User ${u.nama} berhasil diperbarui.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal memperbarui user di Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'deleteUser') {
           const username = args as string;
-          onDeleteUser(username);
           const updatedUsers = users.filter(u => u.username !== username);
-          pushDataToSheets({
-            users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
-            profil: getProfilPayload()
-          });
-          const resp = { success: true, message: `User ${username} telah dihapus.` };
-          addLog('success', `Returned: ${JSON.stringify(resp)}`);
-          onSuccess(resp);
+          try {
+            await pushDataToSheets({
+              users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
+              profil: getProfilPayload()
+            });
+            onDeleteUser(username);
+            const resp = { success: true, message: `User ${username} telah dihapus.` };
+            addLog('success', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          } catch (err: any) {
+            const resp = { success: false, message: `Gagal menghapus user di Google Spreadsheet: ${err.message}` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+          }
         }
         else if (functionName === 'getDashboardStats') {
           const stats = {
@@ -8670,7 +8757,7 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.3</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.4</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
@@ -8679,7 +8766,7 @@ RUNTIME DIAGNOSTIC
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
                                 <span className="inline-block text-[9px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full mt-1">
-                                  Production Ready - Multi-Tenant Isolated
+                                  Production Ready - Multi-Tenant Verified
                                 </span>
                               </div>
                             </div>
@@ -8687,8 +8774,16 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.3)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.4)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[STRICT B2 READ/WRITE VERIFICATION]</strong> Verifikasi dua arah langsung memastikan sel B2 sheet <code>Konfigurasi</code> terisi persis dengan URL Web App Apps Script yang diinput tanpa silent error.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[IMMEDIATE PERSISTENCE VIA SPREADSHEETAPP.FLUSH()]</strong> Memaksa Google Apps Script menulis fisik seluruh mutasi sel &amp; baris ke Google Drive seketika tanpa delay buffer antrean.</span>
+                                </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[MULTI-TENANT ISOLATED 1 LINK 1 SPREADSHEET]</strong> Menghapus seluruh URL Apps Script dan ID spreadsheet hardcode. Setiap tautan aplikasi terisolasi secara mandiri dan membaca konfigurasi murni dari Sheet <code>Konfigurasi</code> di Google Spreadsheet masing-masing.</span>

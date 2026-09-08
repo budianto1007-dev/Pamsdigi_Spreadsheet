@@ -21,7 +21,8 @@ export default function App() {
   const syncSpreadsheetData = useCallback(async () => {
     try {
       const cfg = await getSavedDbConfig();
-      const sheetId = cfg.spreadsheetId || DEFAULT_SPREADSHEET_ID;
+      if (cfg.syncStatus !== 'Connected') return;
+      const sheetId = cfg.spreadsheetId;
       if (!sheetId) return;
 
       const remoteData = await fetchGvizAllData(sheetId);
