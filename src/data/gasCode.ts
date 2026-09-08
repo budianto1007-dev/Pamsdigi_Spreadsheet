@@ -86,7 +86,7 @@ function doGet(e) {
       var liveDbName = db.getName() || "Db_pamsdigi";
       if (liveDbName === "PAMSDIGI Spreadsheet") liveDbName = "Db_pamsdigi";
       result.success = true;
-      result.message = "Google Apps Script Web App PAMSDIGI v2.3.2 terhubung & aktif!";
+      result.message = "Google Apps Script Web App PAMSDIGI v2.3.3 terhubung & aktif!";
       result.timestamp = new Date().toISOString();
       result.spreadsheetName = liveDbName;
       result.data = readAllSheetsData(db);

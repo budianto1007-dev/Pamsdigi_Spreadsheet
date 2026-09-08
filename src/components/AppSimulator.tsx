@@ -8670,16 +8670,16 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.2</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.3</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
-                                <span className="text-xs font-black text-slate-100 mt-1 block">06 Sep 2026</span>
+                                <span className="text-xs font-black text-slate-100 mt-1 block">08 Sep 2026</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
                                 <span className="inline-block text-[9px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full mt-1">
-                                  Production Ready
+                                  Production Ready - Multi-Tenant Isolated
                                 </span>
                               </div>
                             </div>
@@ -8687,8 +8687,24 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.2)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.3)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[MULTI-TENANT ISOLATED 1 LINK 1 SPREADSHEET]</strong> Menghapus seluruh URL Apps Script dan ID spreadsheet hardcode. Setiap tautan aplikasi terisolasi secara mandiri dan membaca konfigurasi murni dari Sheet <code>Konfigurasi</code> di Google Spreadsheet masing-masing.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[PROTEKSI PERSISTENSI SHEET KONFIGURASI]</strong> Parameter <code>gasUrl</code> dan <code>spreadsheetId</code> tersimpan permanen di Sheet <code>Konfigurasi</code> baris 2 &amp; 3 dan diproteksi agar tidak pernah terhapus atau tertimpa string kosong saat sinkronisasi background.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[CRUD FULL DATABASE SPREADSHEET]</strong> Seluruh modul transaksi (Users, Pelanggan, Meter, Tagihan, Kas, Profil, Tarif, Abonemen, Denda) tersimpan langsung secara penuh ke Google Spreadsheet.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[GLOBAL SYNC MULTI-DEVICE]</strong> Ketika Superadmin menyambungkan database atau memperbarui konfigurasi di satu perangkat, seluruh device lain langsung tersinkronisasi otomatis secara real-time.</span>
+                                </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[DYNAMIC HAK AKSES &amp; MENU PERMISSIONS MATRIX]</strong> Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet <code>Konfigurasi</code> di Google Spreadsheet secara global.</span>
@@ -8703,27 +8719,15 @@ RUNTIME DIAGNOSTIC
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[SINGLE SOURCE OF TRUTH SHEET KONFIGURASI]</strong> URL Apps Script, Spreadsheet ID, dan status sinkronisasi global kini disimpan langsung ke sheet <code>Konfigurasi</code> di Google Spreadsheet sehingga semua perangkat langsung sinkron tanpa config manual.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[HIGH-SPEED READ VIA GOOGLE GVIZ API]</strong> Pembacaan seluruh data sheet menggunakan GViz Query API secara paralel tanpa batas kuota execution Apps Script.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[NON-DESTRUCTIVE AUTO-CREATE SHEETS]</strong> Otomatis membuat seluruh tab/sheet yang dibutuhkan aplikasi saat spreadsheet baru/kosong dihubungkan, termasuk sheet Konfigurasi, Profil, Users, Pelanggan, Area, Tarif, Abonemen, Denda, Meter, Tagihan, dan Pembayaran tanpa menghapus data lama.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[FULL SPREADSHEET DATABASE CRUD]</strong> Seluruh operasi create, read, update, dan delete tersimpan permanen di Google Spreadsheet.</span>
+                                  <span><strong>[NON-DESTRUCTIVE AUTO-CREATE SHEETS]</strong> Otomatis membuat seluruh tab/sheet yang dibutuhkan aplikasi saat spreadsheet baru/kosong dihubungkan tanpa menghapus data lama.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[LIVE AUTHENTICATION SPREADSHEET]</strong> Validasi login user petugas dan admin langsung diverifikasi ke baris sheet <code>Users</code> di Google Spreadsheet secara real-time.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[GLOBAL SYNC MULTI-DEVICE]</strong> Ketika Superadmin menyambungkan atau memperbarui konfigurasi di satu perangkat, seluruh device lain (HP petugas, kasir) otomatis terkoneksi ke spreadsheet yang sama.</span>
                                 </div>
                               </div>
                             </div>
