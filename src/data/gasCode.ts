@@ -10,7 +10,7 @@ export const gasFiles: GASFile[] = [
  * REST API & Google Spreadsheet Database Integration
  * Version: v2.3.5
  * Last Updated: 08 September 2026
- * Status: Production Ready - Multi-Tenant Zero-Residual Pure Sheet Storage
+ * Status: Production Ready
  * 
  * Change Log v2.3.5:
  * - [FIX] Elimination of ScriptProperties Residuals: Menghapus total ketergantungan pada PropertiesService yang menyebabkan URL lama Apps Script tertinggal di server Google Cloud dan menimpa konfigurasi.

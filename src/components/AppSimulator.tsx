@@ -623,9 +623,11 @@ export default function AppSimulator({
       if (cfg && cfg.syncStatus === 'Connected' && cfg.gasUrl) {
         setDbGasUrl(cfg.gasUrl);
         setDbSyncStatus('Connected');
-        setDbSpreadsheetName(cfg.spreadsheetName || 'DB_kpspmas siaga');
+        setDbSpreadsheetName(cfg.spreadsheetName || 'Db_pamsdigi');
         if (cfg.lastConnected) setDbLastConnected(cfg.lastConnected);
         if (cfg.spreadsheetId) setDbSpreadsheetId(cfg.spreadsheetId);
+      } else if (cfg && cfg.gasUrl) {
+        setDbGasUrl(cfg.gasUrl);
       }
     }).catch(() => {});
   }, []);
@@ -8766,7 +8768,7 @@ RUNTIME DIAGNOSTIC
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
                                 <span className="inline-block text-[9px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full mt-1">
-                                  Production Ready - Multi-Tenant Zero-Residual Verified
+                                  Production Ready
                                 </span>
                               </div>
                             </div>
