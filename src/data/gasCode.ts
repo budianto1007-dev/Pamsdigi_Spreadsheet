@@ -8,15 +8,15 @@ export const gasFiles: GASFile[] = [
     content: `/**
  * PAMSDIGI - PAMS Digital Indonesia
  * REST API & Google Spreadsheet Database Integration
- * Version: v2.3.4
+ * Version: v2.3.5
  * Last Updated: 08 September 2026
- * Status: Production Ready - Multi-Tenant Isolated Sync & Strict Sheet Konfigurasi Storage
+ * Status: Production Ready - Multi-Tenant Zero-Residual Pure Sheet Storage
  * 
- * Change Log v2.3.4:
+ * Change Log v2.3.5:
+ * - [FIX] Elimination of ScriptProperties Residuals: Menghapus total ketergantungan pada PropertiesService yang menyebabkan URL lama Apps Script tertinggal di server Google Cloud dan menimpa konfigurasi.
+ * - [FIX] Protected gasUrl Cell: Operasi CRUD (pushAll/saveAllSheetsData) dan pembaruan hak akses tidak akan pernah menimpa sel gasUrl di sheet Konfigurasi kecuali jika URL baru secara eksplisit diberikan.
+ * - [FIX] Pure Spreadsheet Storage Single Source of Truth: Sel B2 pada sheet Konfigurasi menjadi satu-satunya tempat pembacaan dan penulisan URL Web App, terisolasi penuh 1 Link - 1 Spreadsheet.
  * - [FIX] Immediate Persistence via SpreadsheetApp.flush(): Memastikan seluruh operasi tulis sel dan baris langsung disimpan secara fisik ke Google Drive tanpa jeda buffer.
- * - [FIX] Strict Read/Write Verification: Sel B2 gasUrl di sheet Konfigurasi dipastikan langsung terisi dan terverifikasi secara atomik.
- * - [FIX] Multi-Tenant Isolation (1 Link - 1 Spreadsheet): Setiap link deployment memiliki spreadsheet independen yang konfigurasinya terbaca dan tertulis eksklusif ke sheet Konfigurasi masing-masing.
- * - [UPDATE] Sheet Konfigurasi as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
  * - [UPDATE] Live Dynamic Spreadsheet Name: Memastikan nama database langsung membaca nama live file spreadsheet Google Drive (Db_pamsdigi) secara dinamis melalui db.getName() dan menyimpannya ke sheet Konfigurasi.
  * - [UPDATE] Default Admin Seeding: Otomatis mengisi akun admin default (username: admin, password: admin) jika sheet Users baru dibuat.
  * - [UPDATE] Live Authentication API: Endpoint login langsung ke sheet Users secara real-time dari HP petugas.
@@ -31,7 +31,7 @@ export const gasFiles: GASFile[] = [
  * 6. Klik Terapkan (Deploy) -> Penerapan Baru (New Deployment).
  * 7. Pilih Jenis: Aplikasi Web (Web App).
  * 8. Konfigurasi Deployment:
- *    - Deskripsi: PAMSDIGI Web API v2.3.4
+ *    - Deskripsi: PAMSDIGI Web API v2.3.5
  *    - Jalankan sebagai (Execute as): Saya (Me)
  *    - Siapa yang memiliki akses (Who has access): Siapa saja (Anyone) -> WAJIB!
  * 9. Klik Terapkan (Deploy), berikan izin Google (Authorize Access), lalu Salin URL Aplikasi Web yang berakhiran /exec.
@@ -87,7 +87,7 @@ function doGet(e) {
       var liveDbName = db.getName() || "Db_pamsdigi";
       if (liveDbName === "PAMSDIGI Spreadsheet") liveDbName = "Db_pamsdigi";
       result.success = true;
-      result.message = "Google Apps Script Web App PAMSDIGI v2.3.4 terhubung & aktif!";
+      result.message = "Google Apps Script Web App PAMSDIGI v2.3.5 terhubung & aktif!";
       result.timestamp = new Date().toISOString();
       result.spreadsheetName = liveDbName;
       result.data = readAllSheetsData(db);
@@ -186,21 +186,19 @@ function getDb() {
  * Sifat: Non-Destructive (Hanya membuat yang belum ada, TIDAK menghapus data lama).
  */
 function initAllSheets(db) {
-  var currentPropGasUrl = "";
-  try {
-    currentPropGasUrl = PropertiesService.getScriptProperties().getProperty("gasUrl") || "";
-  } catch (e) {}
+  var realDbName = db.getName() || 'Db_pamsdigi';
+  if (realDbName === 'PAMSDIGI Spreadsheet') realDbName = 'Db_pamsdigi';
 
   var sheetsNeeded = [
     { 
       name: 'Konfigurasi', 
       headers: ['Key', 'Value', 'Deskripsi', 'UpdatedAt'],
       defaultRows: [
-        ['gasUrl', currentPropGasUrl, 'URL Web App Google Apps Script PAMSDIGI', new Date().toISOString()],
+        ['gasUrl', '', 'URL Web App Google Apps Script PAMSDIGI', new Date().toISOString()],
         ['spreadsheetId', db.getId(), 'ID Google Spreadsheet Database', new Date().toISOString()],
-        ['spreadsheetName', (db.getName() && db.getName() !== 'PAMSDIGI Spreadsheet') ? db.getName() : 'Db_pamsdigi', 'Nama File Spreadsheet', new Date().toISOString()],
-        ['syncStatus', 'Connected', 'Status Koneksi Database', new Date().toISOString()],
-        ['lastConnected', new Date().toLocaleString('id-ID'), 'Waktu Terakhir Terhubung', new Date().toISOString()]
+        ['spreadsheetName', realDbName, 'Nama File Spreadsheet', new Date().toISOString()],
+        ['syncStatus', 'Disconnected', 'Status Koneksi Database', new Date().toISOString()],
+        ['lastConnected', 'Belum Terhubung', 'Waktu Terakhir Terhubung', new Date().toISOString()]
       ]
     },
     { 
@@ -306,20 +304,11 @@ function initAllSheets(db) {
 }
 
 /**
- * Menyimpan konfigurasi ke sheet Konfigurasi (Single Source of Truth) dan ScriptProperties
+ * Menyimpan konfigurasi ke sheet Konfigurasi (Single Source of Truth)
+ * Sifat: Terisolasi 1 Link - 1 Spreadsheet, tidak memakai cache ScriptProperties residu
  */
 function saveStoredConfig(db, cfg) {
   initAllSheets(db);
-  
-  // 1. Simpan ke ScriptProperties sebagai cache cepat
-  var props = PropertiesService.getScriptProperties();
-  if (cfg.spreadsheetId) props.setProperty("spreadsheetId", cfg.spreadsheetId);
-  if (cfg.gasUrl) props.setProperty("gasUrl", cfg.gasUrl);
-  if (cfg.spreadsheetName) props.setProperty("spreadsheetName", cfg.spreadsheetName);
-  if (cfg.syncStatus) props.setProperty("syncStatus", cfg.syncStatus);
-  if (cfg.lastConnected) props.setProperty("lastConnected", cfg.lastConnected);
-
-  // 2. Simpan permanen ke sheet 'Konfigurasi'
   var sheet = db.getSheetByName("Konfigurasi");
   if (!sheet) return;
 
@@ -333,36 +322,87 @@ function saveStoredConfig(db, cfg) {
     }
   }
 
-  var realDbName = db.getName() || cfg.spreadsheetName || 'Db_pamsdigi';
+  var realDbName = db.getName() || (cfg && cfg.spreadsheetName) || 'Db_pamsdigi';
   if (realDbName === 'PAMSDIGI Spreadsheet') realDbName = 'Db_pamsdigi';
 
-  // Dapatkan gasUrl yang sudah tersimpan agar tidak pernah terhapus atau tertimpa string kosong
-  var currentStoredGasUrl = "";
-  if (existingMap['gasUrl']) {
-    currentStoredGasUrl = String(sheet.getRange(existingMap['gasUrl'], 2).getValue() || "").trim();
+  // Hapus seluruh residual ScriptProperties agar tidak pernah membocorkan URL masa lalu
+  try {
+    PropertiesService.getScriptProperties().deleteAllProperties();
+  } catch (e) {}
+
+  var nowIso = new Date().toISOString();
+  var updates = [];
+
+  // 1. gasUrl: HANYA diperbarui jika cfg.gasUrl diberikan secara eksplisit dan valid http(s)
+  // JANGAN PERNAH menimpa baris gasUrl yang sudah ada di sheet jika payload CRUD tidak menyertakan gasUrl baru!
+  if (cfg && cfg.gasUrl && String(cfg.gasUrl).trim().startsWith('http')) {
+    updates.push({
+      key: 'gasUrl',
+      val: String(cfg.gasUrl).trim(),
+      desc: 'URL Web App Google Apps Script PAMSDIGI'
+    });
   }
-  if (!currentStoredGasUrl) {
-    currentStoredGasUrl = props.getProperty("gasUrl") || "";
+
+  // 2. spreadsheetId
+  if (cfg && cfg.spreadsheetId) {
+    updates.push({
+      key: 'spreadsheetId',
+      val: cfg.spreadsheetId,
+      desc: 'ID Google Spreadsheet Database'
+    });
+  } else if (!existingMap['spreadsheetId']) {
+    updates.push({
+      key: 'spreadsheetId',
+      val: db.getId(),
+      desc: 'ID Google Spreadsheet Database'
+    });
   }
-  var finalGasUrl = (cfg.gasUrl && String(cfg.gasUrl).trim().startsWith('http')) 
-    ? String(cfg.gasUrl).trim() 
-    : currentStoredGasUrl;
 
-  // Pastikan ScriptProperties juga selalu tersinkronisasi
-  if (finalGasUrl) props.setProperty("gasUrl", finalGasUrl);
+  // 3. spreadsheetName
+  if (cfg && cfg.spreadsheetName) {
+    var sName = (cfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? cfg.spreadsheetName : realDbName;
+    updates.push({
+      key: 'spreadsheetName',
+      val: sName,
+      desc: 'Nama File Spreadsheet'
+    });
+  } else if (!existingMap['spreadsheetName']) {
+    updates.push({
+      key: 'spreadsheetName',
+      val: realDbName,
+      desc: 'Nama File Spreadsheet'
+    });
+  }
 
-  var updates = [
-    { key: 'gasUrl', val: finalGasUrl, desc: 'URL Web App Google Apps Script PAMSDIGI' },
-    { key: 'spreadsheetId', val: cfg.spreadsheetId || db.getId(), desc: 'ID Google Spreadsheet Database' },
-    { key: 'spreadsheetName', val: realDbName, desc: 'Nama File Spreadsheet' },
-    { key: 'syncStatus', val: cfg.syncStatus || 'Connected', desc: 'Status Koneksi Database' },
-    { key: 'lastConnected', val: cfg.lastConnected || new Date().toLocaleString('id-ID'), desc: 'Waktu Terakhir Terhubung' }
-  ];
+  // 4. syncStatus
+  if (cfg && cfg.syncStatus) {
+    updates.push({
+      key: 'syncStatus',
+      val: cfg.syncStatus,
+      desc: 'Status Koneksi Database'
+    });
+  } else if (!existingMap['syncStatus']) {
+    updates.push({
+      key: 'syncStatus',
+      val: 'Connected',
+      desc: 'Status Koneksi Database'
+    });
+  }
 
-  // Tambahkan key custom lainnya yang ada di cfg (misal: HAK_AKSES_FITUR, HAK_AKSES_MENU, dll.)
+  // 5. lastConnected
+  if (cfg && cfg.lastConnected) {
+    updates.push({
+      key: 'lastConnected',
+      val: cfg.lastConnected,
+      desc: 'Waktu Terakhir Terhubung'
+    });
+  }
+
+  // 6. Custom keys lainnya (misal: HAK_AKSES_FITUR, HAK_AKSES_MENU, pengaturan sistem, dll.)
   if (cfg && typeof cfg === 'object') {
+    var standardKeys = ['gasUrl', 'spreadsheetId', 'spreadsheetName', 'syncStatus', 'lastConnected'];
     Object.keys(cfg).forEach(function(customKey) {
-      if (customKey && !updates.some(function(u) { return u.key === customKey; })) {
+      if (customKey && standardKeys.indexOf(customKey) === -1) {
         var rawVal = cfg[customKey];
         var stringVal = (typeof rawVal === 'object' && rawVal !== null) ? JSON.stringify(rawVal) : String(rawVal || '');
         updates.push({
@@ -374,8 +414,8 @@ function saveStoredConfig(db, cfg) {
     });
   }
 
+  // Tulis ke sheet Konfigurasi
   updates.forEach(function(item) {
-    var nowIso = new Date().toISOString();
     if (existingMap[item.key]) {
       var rowNum = existingMap[item.key];
       sheet.getRange(rowNum, 2).setValue(item.val);
@@ -383,6 +423,7 @@ function saveStoredConfig(db, cfg) {
       sheet.getRange(rowNum, 4).setValue(nowIso);
     } else {
       sheet.appendRow([item.key, item.val, item.desc, nowIso]);
+      existingMap[item.key] = sheet.getLastRow();
     }
   });
 
@@ -391,7 +432,8 @@ function saveStoredConfig(db, cfg) {
 }
 
 /**
- * Membaca konfigurasi dari sheet Konfigurasi (Single Source of Truth) atau fallback PropertiesService
+ * Membaca konfigurasi murni dari sheet Konfigurasi (Single Source of Truth)
+ * Sifat: 100% membaca dari Google Spreadsheet, bebas dari residu ScriptProperties
  */
 function getStoredConfig(db) {
   initAllSheets(db);
@@ -406,7 +448,7 @@ function getStoredConfig(db) {
     lastConnected: "Belum Terhubung"
   };
 
-  // Baca dari sheet Konfigurasi
+  // Baca langsung dari sheet Konfigurasi
   var sheet = db.getSheetByName("Konfigurasi");
   if (sheet && sheet.getLastRow() > 1) {
     var values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
@@ -420,33 +462,30 @@ function getStoredConfig(db) {
       }
       else if (key === "syncStatus") config.syncStatus = val || "Connected";
       else if (key === "lastConnected") config.lastConnected = val || new Date().toLocaleString("id-ID");
+      else if (key) {
+        config[key] = val;
+      }
     }
   }
 
-  // Fallback ke PropertiesService jika gasUrl di sheet belum terisi
-  var props = PropertiesService.getScriptProperties();
-  if (!config.gasUrl) {
-    var propUrl = props.getProperty("gasUrl") || "";
-    if (propUrl) {
-      config.gasUrl = propUrl;
-      config.syncStatus = props.getProperty("syncStatus") || "Connected";
-      config.lastConnected = props.getProperty("lastConnected") || new Date().toLocaleString("id-ID");
-    }
+  // Tentukan status koneksi berdasarkan keberadaan URL yang valid
+  if (config.gasUrl && config.gasUrl.startsWith("http")) {
+    config.syncStatus = "Connected";
+  } else {
+    config.syncStatus = "Disconnected";
   }
 
   return config;
 }
 
 /**
- * Reset konfigurasi database
+ * Reset konfigurasi database secara aman langsung di sheet Konfigurasi
  */
 function resetStoredConfig(db) {
-  var props = PropertiesService.getScriptProperties();
-  props.deleteAllProperties();
-  props.setProperty("syncStatus", "Disconnected");
-  props.setProperty("gasUrl", "");
-  props.setProperty("spreadsheetName", "Belum Terhubung");
-  props.setProperty("lastConnected", "Belum Terhubung");
+  try {
+    var props = PropertiesService.getScriptProperties();
+    props.deleteAllProperties();
+  } catch (e) {}
 
   var sheet = db.getSheetByName("Konfigurasi");
   if (sheet) {
@@ -460,6 +499,7 @@ function resetStoredConfig(db) {
     sheet.appendRow(['syncStatus', 'Disconnected', 'Status Koneksi Database', new Date().toISOString()]);
     sheet.appendRow(['lastConnected', 'Belum Terhubung', 'Waktu Terakhir Terhubung', new Date().toISOString()]);
   }
+  SpreadsheetApp.flush();
 }
 
 /**

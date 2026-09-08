@@ -8757,7 +8757,7 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.4</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.5</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
@@ -8766,7 +8766,7 @@ RUNTIME DIAGNOSTIC
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
                                 <span className="inline-block text-[9px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full mt-1">
-                                  Production Ready - Multi-Tenant Verified
+                                  Production Ready - Multi-Tenant Zero-Residual Verified
                                 </span>
                               </div>
                             </div>
@@ -8774,11 +8774,19 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.4)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.5)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[STRICT B2 READ/WRITE VERIFICATION]</strong> Verifikasi dua arah langsung memastikan sel B2 sheet <code>Konfigurasi</code> terisi persis dengan URL Web App Apps Script yang diinput tanpa silent error.</span>
+                                  <span><strong>[ELIMINASI RESIDU SCRIPT PROPERTIES]</strong> Menghapus total ketergantungan pada <code>PropertiesService</code> yang sebelumnya menyimpan URL lama di server Google dan menyebabkan URL lama kembali aktif saat operasi CRUD.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[PROTEKSI SEL B2 GASURL SHEET KONFIGURASI]</strong> Operasi CRUD (input/delete data, simpan hak akses, atau sinkronisasi background) diproteksi secara ketat sehingga tidak akan pernah menimpa atau merusak URL Apps Script di sheet <code>Konfigurasi</code>.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[PURE SPREADSHEET SINGLE SOURCE OF TRUTH]</strong> Sel B2 sheet <code>Konfigurasi</code> menjadi satu-satunya tempat penyimpanan URL Web App secara terisolasi penuh (1 Link - 1 Spreadsheet).</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
@@ -8787,10 +8795,6 @@ RUNTIME DIAGNOSTIC
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[MULTI-TENANT ISOLATED 1 LINK 1 SPREADSHEET]</strong> Menghapus seluruh URL Apps Script dan ID spreadsheet hardcode. Setiap tautan aplikasi terisolasi secara mandiri dan membaca konfigurasi murni dari Sheet <code>Konfigurasi</code> di Google Spreadsheet masing-masing.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[PROTEKSI PERSISTENSI SHEET KONFIGURASI]</strong> Parameter <code>gasUrl</code> dan <code>spreadsheetId</code> tersimpan permanen di Sheet <code>Konfigurasi</code> baris 2 &amp; 3 dan diproteksi agar tidak pernah terhapus atau tertimpa string kosong saat sinkronisasi background.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
@@ -8806,23 +8810,7 @@ RUNTIME DIAGNOSTIC
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[CUSTOM CONFIG KEY STORAGE]</strong> Fungsi <code>saveStoredConfig</code> otomatis menyimpan dan memperbarui key konfigurasi baru tanpa perlu hardcoded.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
                                   <span><strong>[LIVE DYNAMIC SPREADSHEET NAME (Db_pamsdigi)]</strong> Memastikan nama database langsung membaca nama live file Google Spreadsheet (<code>Db_pamsdigi</code>) secara dinamis melalui <code>db.getName()</code> dan menyimpannya ke sheet <code>Konfigurasi</code>.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[HIGH-SPEED READ VIA GOOGLE GVIZ API]</strong> Pembacaan seluruh data sheet menggunakan GViz Query API secara paralel tanpa batas kuota execution Apps Script.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[NON-DESTRUCTIVE AUTO-CREATE SHEETS]</strong> Otomatis membuat seluruh tab/sheet yang dibutuhkan aplikasi saat spreadsheet baru/kosong dihubungkan tanpa menghapus data lama.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[LIVE AUTHENTICATION SPREADSHEET]</strong> Validasi login user petugas dan admin langsung diverifikasi ke baris sheet <code>Users</code> di Google Spreadsheet secara real-time.</span>
                                 </div>
                               </div>
                             </div>
