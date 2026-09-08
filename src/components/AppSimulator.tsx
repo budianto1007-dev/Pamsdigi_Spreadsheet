@@ -576,14 +576,18 @@ export default function AppSimulator({
   const [dbCompanyName, setDbCompanyName] = useState<string>('KPSPAMS DESA MANDIRI');
   const [dbCompanyId, setDbCompanyId] = useState<string>('COMP-PAMSDIGI-2026');
   const [dbSpreadsheetId, setDbSpreadsheetId] = useState<string>(() => {
-    return ENV_SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
+    return ENV_SPREADSHEET_ID || (typeof window !== 'undefined' ? localStorage.getItem('pams_google_sheet_id') || '' : '');
   });
   const [dbGasUrl, setDbGasUrl] = useState<string>(() => {
-    return ENV_GAS_URL || DEFAULT_GAS_URL;
+    return ENV_GAS_URL || (typeof window !== 'undefined' ? localStorage.getItem('pams_google_gas_url') || '' : '');
   });
-  const [dbLastConnected, setDbLastConnected] = useState<string>(() => new Date().toLocaleString('id-ID'));
-  const [dbSyncStatus, setDbSyncStatus] = useState<'Connected' | 'Disconnected'>('Connected');
-  const [dbSpreadsheetName, setDbSpreadsheetName] = useState<string>('Db_pamsdigi');
+  const [dbLastConnected, setDbLastConnected] = useState<string>(() => 'Belum Terhubung');
+  const [dbSyncStatus, setDbSyncStatus] = useState<'Connected' | 'Disconnected'>(() => {
+    return (typeof window !== 'undefined' && localStorage.getItem('pams_db_sync_status') === 'Connected') ? 'Connected' : 'Disconnected';
+  });
+  const [dbSpreadsheetName, setDbSpreadsheetName] = useState<string>(() => {
+    return (typeof window !== 'undefined' ? localStorage.getItem('pams_db_sheet_name') || 'Belum Terhubung' : 'Belum Terhubung');
+  });
   const [showResetDbModal, setShowResetDbModal] = useState(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(() => getOfflineQueueCount());
 
@@ -1040,7 +1044,6 @@ RUNTIME DIAGNOSTIC
       const liveConfig = await fetchGasConfig();
 
       if (liveConfig.syncStatus === 'Disconnected' || !liveConfig.gasUrl) {
-        setDbGasUrl(prev => prev || DEFAULT_GAS_URL);
         setDbSpreadsheetName('Belum Terhubung');
         setDbSyncStatus('Disconnected');
         setDbLastConnected('Belum Terhubung');
@@ -1204,7 +1207,6 @@ RUNTIME DIAGNOSTIC
         setDbLastConnected(cfg.lastConnected || new Date().toLocaleString('id-ID'));
         if (cfg.spreadsheetId) setDbSpreadsheetId(cfg.spreadsheetId);
       } else if (cfg.syncStatus === 'Disconnected') {
-        setDbGasUrl(prev => prev || DEFAULT_GAS_URL);
         setDbSyncStatus('Disconnected');
         setDbSpreadsheetName('Belum Terhubung');
         setDbLastConnected('Belum Terhubung');
@@ -1228,7 +1230,6 @@ RUNTIME DIAGNOSTIC
           }
         } else if (cfg.syncStatus === 'Disconnected') {
           if (dbSyncStatus === 'Connected') {
-            setDbGasUrl(prev => prev || DEFAULT_GAS_URL);
             setDbSyncStatus('Disconnected');
             setDbSpreadsheetName('Belum Terhubung');
             setDbLastConnected('Belum Terhubung');
@@ -1368,32 +1369,27 @@ RUNTIME DIAGNOSTIC
 
   // Real-time Global Database Config Polling across all browsers/devices
   useEffect(() => {
+    // Only poll periodically if database is already connected
+    if (dbSyncStatus !== 'Connected' || !dbGasUrl) return;
+
     const syncInterval = setInterval(async () => {
       if (isCheckingDb) return;
 
       try {
-        const liveCfg = await fetchGasConfig();
+        const liveCfg = await fetchGasConfig(dbGasUrl);
         if (liveCfg.syncStatus === 'Connected' && liveCfg.gasUrl) {
-          if (dbSyncStatus === 'Disconnected' || dbGasUrl !== liveCfg.gasUrl) {
-            setDbGasUrl(liveCfg.gasUrl);
-            const resSheetName = (liveCfg.spreadsheetName && liveCfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? liveCfg.spreadsheetName : 'Db_pamsdigi';
-            setDbSpreadsheetName(resSheetName);
-            setDbSyncStatus('Connected');
-            setDbLastConnected(liveCfg.lastConnected || new Date().toLocaleString('id-ID'));
-            addLog('info', 'Sistem terhubung ke database global terbaru.');
-          }
-        } else {
-          if (dbSyncStatus === 'Connected') {
-            setDbGasUrl(prev => prev || DEFAULT_GAS_URL);
-            setDbSyncStatus('Disconnected');
-            setDbSpreadsheetName('Belum Terhubung');
-            setDbLastConnected('Belum Terhubung');
-            setDbCheckSteps([]);
-            addLog('info', 'Sistem mendeteksi konfigurasi database di-reset secara global. Status diubah menjadi BELUM TERHUBUNG.');
-          }
+          const resSheetName = (liveCfg.spreadsheetName && liveCfg.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? liveCfg.spreadsheetName : 'Db_pamsdigi';
+          setDbSpreadsheetName(resSheetName);
+          setDbLastConnected(liveCfg.lastConnected || new Date().toLocaleString('id-ID'));
+        } else if (liveCfg.syncStatus === 'Disconnected') {
+          setDbSyncStatus('Disconnected');
+          setDbSpreadsheetName('Belum Terhubung');
+          setDbLastConnected('Belum Terhubung');
+          setDbCheckSteps([]);
+          addLog('info', 'Sistem mendeteksi konfigurasi database di-reset secara global.');
         }
       } catch (_) {}
-    }, 3000);
+    }, 15000);
 
     return () => clearInterval(syncInterval);
   }, [dbSyncStatus, dbGasUrl, isCheckingDb]);
@@ -8397,7 +8393,7 @@ RUNTIME DIAGNOSTIC
                               onChange={(e) => {
                                 setDbGasUrl(e.target.value);
                               }}
-                              disabled={currentUser?.role !== 'SUPER_ADMIN'}
+                              disabled={currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'Admin'}
                               className="w-full bg-slate-950/60 border border-slate-800 px-3 py-2 rounded-xl text-xs font-mono font-bold text-slate-200 focus:border-emerald-500 outline-none transition disabled:opacity-60 disabled:cursor-not-allowed"
                               placeholder="Contoh: https://script.google.com/macros/s/.../exec"
                             />
@@ -8521,7 +8517,7 @@ RUNTIME DIAGNOSTIC
                           <button
                             type="button"
                             onClick={handleCheckDatabase}
-                            disabled={currentUser?.role !== 'SUPER_ADMIN' || isCheckingDb}
+                            disabled={(currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'Admin') || isCheckingDb}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] px-4 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shadow-emerald-950/30 font-sans disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             {isCheckingDb ? (
@@ -8542,7 +8538,7 @@ RUNTIME DIAGNOSTIC
                               setDbCheckSteps([]); // Clear checklist
                               showToast('URL Google Apps Script diperbarui. Silakan klik "Simpan / Cek Database" untuk menguji koneksi.', 'success');
                             }}
-                            disabled={currentUser?.role !== 'SUPER_ADMIN' || isCheckingDb}
+                            disabled={(currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'Admin') || isCheckingDb}
                             className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-extrabold text-[10px] px-3.5 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <Edit size={12} />
@@ -8553,7 +8549,7 @@ RUNTIME DIAGNOSTIC
                           <button
                             type="button"
                             onClick={() => setShowResetDbModal(true)}
-                            disabled={currentUser?.role !== 'SUPER_ADMIN' || isCheckingDb}
+                            disabled={(currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'Admin') || isCheckingDb}
                             className="bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 font-extrabold text-[10px] px-3.5 py-2.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 sm:ml-auto disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <RotateCcw size={12} className="text-rose-400" />

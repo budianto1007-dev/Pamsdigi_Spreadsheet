@@ -8,13 +8,14 @@ export const gasFiles: GASFile[] = [
     content: `/**
  * PAMSDIGI - PAMS Digital Indonesia
  * REST API & Google Spreadsheet Database Integration
- * Version: v2.3.2
- * Last Updated: 06 September 2026
- * Status: Production Ready - Dynamic Hak Akses & Menu Permissions Matrix
+ * Version: v2.3.3
+ * Last Updated: 08 September 2026
+ * Status: Production Ready - Multi-Tenant Isolated Sync & Sheet Konfigurasi Storage
  * 
- * Change Log v2.3.2:
- * - [NEW] Dynamic Hak Akses & Menu Matrix: Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet 'Konfigurasi' secara global.
- * - [NEW] Custom Config Key Storage: Fungsi saveStoredConfig otomatis menyimpan dan memperbarui key konfigurasi baru (seperti HAK_AKSES_FITUR, HAK_AKSES_MENU) tanpa perlu hardcoded.
+ * Change Log v2.3.3:
+ * - [FIX] Sheet Konfigurasi Persistence: Memastikan gasUrl yang sudah terhubung tidak pernah terhapus atau tertimpa string kosong saat sinkronisasi background (pushAll/readAll).
+ * - [UPDATE] Multi-Tenant Architecture: Mendukung multi-deployment independen (1 link Vercel -> 1 Google Spreadsheet) secara terisolasi tanpa saling menimpa.
+ * - [UPDATE] Dynamic Hak Akses & Menu Matrix: Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet 'Konfigurasi' secara global.
  * - [UPDATE] Live Dynamic Spreadsheet Name: Memastikan nama database langsung membaca nama live file spreadsheet Google Drive (Db_pamsdigi) secara dinamis melalui db.getName() dan menyimpannya ke sheet Konfigurasi.
  * - [UPDATE] Konfigurasi Sheet as Single Source of Truth: Menyimpan gasUrl, spreadsheetId, dan status global langsung ke sheet 'Konfigurasi' di Google Spreadsheet.
  * - [UPDATE] Default Admin Seeding: Otomatis mengisi akun admin default (username: admin, password: admin) jika sheet Users baru dibuat.
@@ -30,7 +31,7 @@ export const gasFiles: GASFile[] = [
  * 6. Klik Terapkan (Deploy) -> Penerapan Baru (New Deployment).
  * 7. Pilih Jenis: Aplikasi Web (Web App).
  * 8. Konfigurasi Deployment:
- *    - Deskripsi: PAMSDIGI Web API v2.3.2
+ *    - Deskripsi: PAMSDIGI Web API v2.3.3
  *    - Jalankan sebagai (Execute as): Saya (Me)
  *    - Siapa yang memiliki akses (Who has access): Siapa saja (Anyone) -> WAJIB!
  * 9. Klik Terapkan (Deploy), berikan izin Google (Authorize Access), lalu Salin URL Aplikasi Web yang berakhiran /exec.
@@ -184,12 +185,17 @@ function getDb() {
  * Sifat: Non-Destructive (Hanya membuat yang belum ada, TIDAK menghapus data lama).
  */
 function initAllSheets(db) {
+  var currentPropGasUrl = "";
+  try {
+    currentPropGasUrl = PropertiesService.getScriptProperties().getProperty("gasUrl") || "";
+  } catch (e) {}
+
   var sheetsNeeded = [
     { 
       name: 'Konfigurasi', 
       headers: ['Key', 'Value', 'Deskripsi', 'UpdatedAt'],
       defaultRows: [
-        ['gasUrl', '', 'URL Web App Google Apps Script PAMSDIGI', new Date().toISOString()],
+        ['gasUrl', currentPropGasUrl, 'URL Web App Google Apps Script PAMSDIGI', new Date().toISOString()],
         ['spreadsheetId', db.getId(), 'ID Google Spreadsheet Database', new Date().toISOString()],
         ['spreadsheetName', (db.getName() && db.getName() !== 'PAMSDIGI Spreadsheet') ? db.getName() : 'Db_pamsdigi', 'Nama File Spreadsheet', new Date().toISOString()],
         ['syncStatus', 'Connected', 'Status Koneksi Database', new Date().toISOString()],
@@ -329,8 +335,23 @@ function saveStoredConfig(db, cfg) {
   var realDbName = db.getName() || cfg.spreadsheetName || 'Db_pamsdigi';
   if (realDbName === 'PAMSDIGI Spreadsheet') realDbName = 'Db_pamsdigi';
 
+  // Dapatkan gasUrl yang sudah tersimpan agar tidak pernah terhapus atau tertimpa string kosong
+  var currentStoredGasUrl = "";
+  if (existingMap['gasUrl']) {
+    currentStoredGasUrl = String(sheet.getRange(existingMap['gasUrl'], 2).getValue() || "").trim();
+  }
+  if (!currentStoredGasUrl) {
+    currentStoredGasUrl = props.getProperty("gasUrl") || "";
+  }
+  var finalGasUrl = (cfg.gasUrl && String(cfg.gasUrl).trim().startsWith('http')) 
+    ? String(cfg.gasUrl).trim() 
+    : currentStoredGasUrl;
+
+  // Pastikan ScriptProperties juga selalu tersinkronisasi
+  if (finalGasUrl) props.setProperty("gasUrl", finalGasUrl);
+
   var updates = [
-    { key: 'gasUrl', val: cfg.gasUrl || '', desc: 'URL Web App Google Apps Script PAMSDIGI' },
+    { key: 'gasUrl', val: finalGasUrl, desc: 'URL Web App Google Apps Script PAMSDIGI' },
     { key: 'spreadsheetId', val: cfg.spreadsheetId || db.getId(), desc: 'ID Google Spreadsheet Database' },
     { key: 'spreadsheetName', val: realDbName, desc: 'Nama File Spreadsheet' },
     { key: 'syncStatus', val: cfg.syncStatus || 'Connected', desc: 'Status Koneksi Database' },
