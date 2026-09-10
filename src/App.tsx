@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { initialUsers, initialPelanggan, initialAreas, initialTarifs, initialAbonemen, initialDenda } from './data/initialData';
 import { UserRow, PelangganRow, AreaRow, TarifRow, AbonemenRow, DendaRow } from './types';
-import { fetchGvizAllData, getSavedDbConfig, DEFAULT_SPREADSHEET_ID } from './lib/googleSheets';
+import { fetchGvizAllData, getSavedDbConfig, DEFAULT_SPREADSHEET_ID, isRecentlyMutated } from './lib/googleSheets';
 import AppSimulator from './components/AppSimulator';
 import SpreadsheetView from './components/SpreadsheetView';
 import CodeExporter from './components/CodeExporter';
@@ -20,6 +20,9 @@ export default function App() {
   // Real-time synchronization from Google Spreadsheet via Google Visualization API (GViz)
   const syncSpreadsheetData = useCallback(async () => {
     try {
+      // Mencegah GViz menimpa state React jika pengguna baru saja melakukan mutasi lokal (tambah/edit/hapus)
+      if (isRecentlyMutated()) return;
+
       const cfg = await getSavedDbConfig();
       if (cfg.syncStatus !== 'Connected') return;
       const sheetId = cfg.spreadsheetId;

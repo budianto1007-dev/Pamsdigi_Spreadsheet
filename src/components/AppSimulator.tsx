@@ -29,6 +29,8 @@ import DeploymentGuide from './DeploymentGuide';
 import { 
   connectGoogleAccount, 
   pushDataToSheets, 
+  pushSingleSheet,
+  recordMutation,
   getAccessToken,
   pullDataFromSheets,
   initializeSheetsAndHeaders,
@@ -845,19 +847,28 @@ RUNTIME DIAGNOSTIC
       const lastConn = new Date().toLocaleString('id-ID');
 
       const realSheetName = (responseData?.spreadsheetName && responseData.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? responseData.spreadsheetName : 'Db_pamsdigi';
+      const realSheetId = responseData?.config?.spreadsheetId || responseData?.spreadsheetId || '';
 
       await saveGlobalDbConfig({
         gasUrl: cleanUrl,
         spreadsheetName: realSheetName,
         lastConnected: lastConn,
-        spreadsheetId: ''
+        spreadsheetId: realSheetId
       });
 
       setDbGasUrl(cleanUrl);
-      setDbSpreadsheetId('');
+      setDbSpreadsheetId(realSheetId);
       setDbSpreadsheetName(realSheetName);
       setDbLastConnected(lastConn);
       setDbSyncStatus('Connected');
+
+      if (realSheetId && typeof window !== 'undefined') {
+        try {
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.set('id', realSheetId);
+          window.history.replaceState({}, '', currentUrl.toString());
+        } catch (_) {}
+      }
       
       updateStepStatus('finalize', 'success');
       addLog('success', `Simpan & Cek Database: Berhasil menghubungkan dan memvalidasi Google Spreadsheet.`);
@@ -1657,16 +1668,17 @@ RUNTIME DIAGNOSTIC
             }
             updatedPelList = [...pelanggan, pel];
           }
+          recordMutation();
+          if (exists) {
+            onUpdatePelanggan(pel);
+          } else {
+            onAddPelanggan(pel);
+          }
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Pelanggan', updatedPelList, {
               users, pelanggan: updatedPelList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            if (exists) {
-              onUpdatePelanggan(pel);
-            } else {
-              onAddPelanggan(pel);
-            }
             const resp = { success: true, message: `Berhasil menyimpan pelanggan: ${pel.nama}` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1679,12 +1691,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'deletePelanggan') {
           const noPel = args as string;
           const updatedPelList = pelanggan.filter(p => p.noPelanggan !== noPel);
+          recordMutation();
+          onDeletePelanggan(noPel);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Pelanggan', updatedPelList, {
               users, pelanggan: updatedPelList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onDeletePelanggan(noPel);
             const resp = { success: true, message: `Pelanggan ${noPel} berhasil dihapus dari database.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1696,12 +1709,13 @@ RUNTIME DIAGNOSTIC
         }
         else if (functionName === 'bulkImportPelanggan') {
           const validList = args as PelangganRow[];
+          recordMutation();
+          onReplacePelanggan(validList);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Pelanggan', validList, {
               users, pelanggan: validList, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onReplacePelanggan(validList);
             const resp = { success: true, message: `Berhasil mengimport ${validList.length} data pelanggan ke Google Sheet!` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1720,12 +1734,13 @@ RUNTIME DIAGNOSTIC
             return;
           }
           const updatedAreas = [...areas.filter(a => a.id.toUpperCase() !== newArea.id.toUpperCase()), newArea];
+          recordMutation();
+          onAddArea(newArea);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Area', updatedAreas, {
               users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onAddArea(newArea);
             const resp = { success: true, message: `Area ${newArea.nama} berhasil disimpan ke Spreadsheet.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1738,12 +1753,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'updateArea') {
           const updatedArea = args as AreaRow;
           const updatedAreas = areas.map(a => a.id === updatedArea.id ? updatedArea : a);
+          recordMutation();
+          onUpdateArea(updatedArea);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Area', updatedAreas, {
               users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onUpdateArea(updatedArea);
             const resp = { success: true, message: `Area ${updatedArea.nama} berhasil diperbarui di Spreadsheet.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1756,12 +1772,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'deleteArea') {
           const id = args as string;
           const updatedAreas = areas.filter(a => a.id !== id);
+          recordMutation();
+          onDeleteArea(id);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Area', updatedAreas, {
               users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onDeleteArea(id);
             const resp = { success: true, message: `Baris area ID ${id} berhasil dihapus dari Google Sheets.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1774,12 +1791,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'saveTarif') {
           const t = args as TarifRow;
           const updatedTarifs = [...tarifs, t];
+          recordMutation();
+          onAddTarif(t);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Tarif', updatedTarifs, {
               users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onAddTarif(t);
             const resp = { success: true, message: `Skema tarif ${t.golongan} berhasil disimpan ke Spreadsheet.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1792,12 +1810,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'updateTarif') {
           const t = args as TarifRow;
           const updatedTarifs = tarifs.map(tf => tf.id === t.id ? t : tf);
+          recordMutation();
+          onUpdateTarif(t);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Tarif', updatedTarifs, {
               users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onUpdateTarif(t);
             const resp = { success: true, message: `Skema tarif ${t.golongan} berhasil diperbarui.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1810,12 +1829,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'deleteTarif') {
           const id = args as string;
           const updatedTarifs = tarifs.filter(t => t.id !== id);
+          recordMutation();
+          onDeleteTarif(id);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Tarif', updatedTarifs, {
               users, pelanggan, areas, tarifs: updatedTarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onDeleteTarif(id);
             const resp = { success: true, message: `Tarif ID ${id} telah dihapus dari database.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1827,12 +1847,13 @@ RUNTIME DIAGNOSTIC
         }
         else if (functionName === 'saveAbonemen') {
           const ab = args as AbonemenRow;
+          recordMutation();
+          onUpdateAbonemen(ab);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Abonemen', ab, {
               users, pelanggan, areas, tarifs, abonemen: ab, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onUpdateAbonemen(ab);
             const resp = { success: true, message: `Abonemen nominal Rp ${ab.nominal.toLocaleString('id-ID')} disimpan.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1844,12 +1865,13 @@ RUNTIME DIAGNOSTIC
         }
         else if (functionName === 'saveDenda') {
           const de = args as DendaRow;
+          recordMutation();
+          onUpdateDenda(de);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Denda', de, {
               users, pelanggan, areas, tarifs, abonemen, denda: de, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onUpdateDenda(de);
             const resp = { success: true, message: `Pengaturan denda diperbarui (Status: ${de.status}, Rp ${de.nominal}).` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1862,12 +1884,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'saveUser') {
           const u = args as UserRow;
           const updatedUsers = [...users, u];
+          recordMutation();
+          onAddUser(u);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Users', updatedUsers, {
               users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onAddUser(u);
             const resp = { success: true, message: `User ${u.nama} berhasil didaftarkan.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1880,12 +1903,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'updateUser') {
           const u = args as UserRow;
           const updatedUsers = users.map(us => us.username === u.username ? u : us);
+          recordMutation();
+          onUpdateUser(u);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Users', updatedUsers, {
               users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onUpdateUser(u);
             const resp = { success: true, message: `User ${u.nama} berhasil diperbarui.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -1898,12 +1922,13 @@ RUNTIME DIAGNOSTIC
         else if (functionName === 'deleteUser') {
           const username = args as string;
           const updatedUsers = users.filter(u => u.username !== username);
+          recordMutation();
+          onDeleteUser(username);
           try {
-            await pushDataToSheets({
+            await pushSingleSheet('Users', updatedUsers, {
               users: updatedUsers, pelanggan, areas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
               profil: getProfilPayload()
             });
-            onDeleteUser(username);
             const resp = { success: true, message: `User ${username} telah dihapus.` };
             addLog('success', `Returned: ${JSON.stringify(resp)}`);
             onSuccess(resp);
@@ -2474,12 +2499,10 @@ RUNTIME DIAGNOSTIC
     
     if (areaEditId) {
       // Edit
-      setIsLoading(true);
       runGoogleScript(
         'updateArea',
         { id: areaEditId, nama: areaInputNama.trim() },
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
             setAreaEditId(null);
@@ -2488,7 +2511,6 @@ RUNTIME DIAGNOSTIC
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -2498,12 +2520,10 @@ RUNTIME DIAGNOSTIC
         showToast('Gagal: ID Area sudah digunakan!', 'error');
         return;
       }
-      setIsLoading(true);
       runGoogleScript(
         'saveArea',
         { id: idClean, nama: areaInputNama.trim() },
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
             setAreaInputId('');
@@ -2511,7 +2531,6 @@ RUNTIME DIAGNOSTIC
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -2524,18 +2543,15 @@ RUNTIME DIAGNOSTIC
       return;
     }
     if (window.confirm('Yakin ingin menghapus data?')) {
-      setIsLoading(true);
       runGoogleScript(
         'deleteArea',
         id,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -2628,13 +2644,11 @@ RUNTIME DIAGNOSTIC
       status: 'Aktif'
     };
 
-    setIsLoading(true);
     if (tarifEditId) {
       runGoogleScript(
         'updateTarif',
         payload,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
             setTarifEditId(null);
@@ -2644,13 +2658,11 @@ RUNTIME DIAGNOSTIC
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
     } else {
       if (tarifs.some(t => t.id.toUpperCase() === cleanId)) {
-        setIsLoading(false);
         showToast('Gagal: ID Tarif sudah digunakan!', 'error');
         return;
       }
@@ -2658,7 +2670,6 @@ RUNTIME DIAGNOSTIC
         'saveTarif',
         payload,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
             setTarifInputId('');
@@ -2667,7 +2678,6 @@ RUNTIME DIAGNOSTIC
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -2680,18 +2690,15 @@ RUNTIME DIAGNOSTIC
       return;
     }
     if (window.confirm('Yakin ingin menghapus data?')) {
-      setIsLoading(true);
       runGoogleScript(
         'deleteTarif',
         id,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -2704,16 +2711,13 @@ RUNTIME DIAGNOSTIC
       showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengubah data abonemen!', 'error');
       return;
     }
-    setIsLoading(true);
     runGoogleScript(
       'saveAbonemen',
       { nominal: Number(aboInputNominal) || 0, status: aboInputStatus },
       (resp) => {
-        setIsLoading(false);
         if (resp.success) showToast(resp.message, 'success');
       },
       (err) => {
-        setIsLoading(false);
         showToast(`Gagal: ${err.message}`, 'error');
       }
     );
@@ -2725,16 +2729,13 @@ RUNTIME DIAGNOSTIC
       showToast('Akses Ditolak: Anda tidak memiliki hak akses untuk mengubah ketentuan denda!', 'error');
       return;
     }
-    setIsLoading(true);
     runGoogleScript(
       'saveDenda',
       { status: dendaInputStatus, nominal: Number(dendaInputNominal) || 0, hariKeterlambatan: Number(dendaInputHari) || 0 },
       (resp) => {
-        setIsLoading(false);
         if (resp.success) showToast(resp.message, 'success');
       },
       (err) => {
-        setIsLoading(false);
         showToast(`Gagal: ${err.message}`, 'error');
       }
     );
@@ -2784,13 +2785,11 @@ RUNTIME DIAGNOSTIC
       payload.password = passwordClean;
     }
 
-    setIsLoading(true);
     if (userEditUsername) {
       runGoogleScript(
         'updateUser',
         payload,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
             setUserEditUsername(null);
@@ -2803,13 +2802,11 @@ RUNTIME DIAGNOSTIC
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
     } else {
       if (users.some(u => u.username.toLowerCase() === usernameClean)) {
-        setIsLoading(false);
         showToast('Gagal: Username sudah digunakan!', 'error');
         return;
       }
@@ -2817,7 +2814,6 @@ RUNTIME DIAGNOSTIC
         'saveUser',
         payload,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
             setUserInputUsername('');
@@ -2829,7 +2825,6 @@ RUNTIME DIAGNOSTIC
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -2850,18 +2845,15 @@ RUNTIME DIAGNOSTIC
       return;
     }
     if (window.confirm('Yakin ingin menghapus data?')) {
-      setIsLoading(true);
       runGoogleScript(
         'deleteUser',
         username,
         (resp) => {
-          setIsLoading(false);
           if (resp.success) {
             showToast(resp.message, 'success');
           }
         },
         (err) => {
-          setIsLoading(false);
           showToast(`Gagal: ${err.message}`, 'error');
         }
       );
@@ -4446,13 +4438,7 @@ RUNTIME DIAGNOSTIC
               </div>
             )}
 
-            {/* IN-APP GLOBAL LOADING OVERLAY */}
-            {isLoading && (
-              <div className="absolute inset-0 bg-white/80 z-50 flex flex-col justify-center items-center">
-                <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-200 border-t-blue-600 mb-3"></div>
-                <p className="text-xs font-semibold text-slate-600 animate-pulse">Menghubungkan Spreadsheet...</p>
-              </div>
-            )}
+
 
             {/* --- VIEW: LOGIN --- */}
             {currentView === 'login' && (

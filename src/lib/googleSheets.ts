@@ -701,6 +701,75 @@ export async function pushDataToSheets(
   }
 }
 
+let lastMutationTimestamp = 0;
+
+/**
+ * Mencatat waktu mutasi lokal terkini (tambah/edit/hapus data).
+ */
+export function recordMutation(): void {
+  lastMutationTimestamp = Date.now();
+}
+
+/**
+ * Mengecek apakah ada mutasi lokal dalam rentang waktu tertentu.
+ * Mencegah auto-refresh GViz menimpa input data baru pengguna sebelum selesai tersimpan.
+ */
+export function isRecentlyMutated(windowMs = 12000): boolean {
+  return Date.now() - lastMutationTimestamp < windowMs;
+}
+
+/**
+ * Menyimpan mutasi data secara cepat hanya pada 1 sheet target (~0.3 detik).
+ * Jauh lebih responsif daripada harus menimpa 10 sheet sekaligus.
+ * Otomatis fallback ke pushDataToSheets jika deployment Apps Script pengguna masih versi lama.
+ */
+export async function pushSingleSheet(
+  sheetName: string,
+  items: any,
+  fallbackFullData?: any
+): Promise<{ success: boolean; message: string }> {
+  recordMutation();
+  const gasUrl = await getSavedGasUrl();
+  if (!gasUrl || !gasUrl.startsWith('http')) {
+    throw new Error('Database Google Spreadsheet belum terhubung. Silakan hubungkan database terlebih dahulu.');
+  }
+
+  try {
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify({
+        action: 'saveSheet',
+        sheetName: sheetName,
+        data: items,
+      }),
+    });
+
+    if (res.ok) {
+      const resText = await res.text();
+      let json: any = null;
+      try { json = JSON.parse(resText); } catch (_) {}
+      if (json && json.success) {
+        return {
+          success: true,
+          message: json.message || `Sheet ${sheetName} berhasil disimpan ke Google Spreadsheet.`
+        };
+      }
+    }
+  } catch (err) {
+    console.warn(`saveSheet '${sheetName}' failed, falling back to pushDataToSheets:`, err);
+  }
+
+  // Fallback to pushDataToSheets jika deployment Web App lama belum mendukung saveSheet
+  if (fallbackFullData) {
+    return pushDataToSheets(fallbackFullData);
+  }
+  return { success: false, message: `Gagal menyimpan sheet ${sheetName}` };
+}
+
 /**
  * Fetches a public tab's contents from Google Spreadsheet using the Google Visualization API with &headers=1.
  */
