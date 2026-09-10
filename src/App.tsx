@@ -28,13 +28,40 @@ export default function App() {
       const remoteData = await fetchGvizAllData(sheetId);
       if (remoteData) {
         if (remoteData.users && remoteData.users.length > 0) {
-          setUsers(remoteData.users);
+          const uniqueUsers: UserRow[] = [];
+          const seenUsers = new Set<string>();
+          for (const u of remoteData.users) {
+            const key = u.username.toLowerCase();
+            if (!seenUsers.has(key)) {
+              seenUsers.add(key);
+              uniqueUsers.push(u);
+            }
+          }
+          setUsers(uniqueUsers);
         }
         if (remoteData.areas && remoteData.areas.length > 0) {
-          setAreas(remoteData.areas);
+          const uniqueAreas: AreaRow[] = [];
+          const seenAreas = new Set<string>();
+          for (const a of remoteData.areas) {
+            const key = a.id.toUpperCase();
+            if (!seenAreas.has(key)) {
+              seenAreas.add(key);
+              uniqueAreas.push(a);
+            }
+          }
+          setAreas(uniqueAreas);
         }
         if (remoteData.pelanggan !== undefined && Array.isArray(remoteData.pelanggan)) {
-          setPelanggan(remoteData.pelanggan);
+          const uniquePel: PelangganRow[] = [];
+          const seenPel = new Set<string>();
+          for (const p of remoteData.pelanggan) {
+            const key = p.noPelanggan;
+            if (!seenPel.has(key)) {
+              seenPel.add(key);
+              uniquePel.push(p);
+            }
+          }
+          setPelanggan(uniquePel);
         }
         if (remoteData.tarifs && remoteData.tarifs.length > 0) {
           setTarifs(remoteData.tarifs);
@@ -72,7 +99,10 @@ export default function App() {
 
   // --- DATABASE WRITE HANDLERS (Optimistic UI state, persisted to Spreadsheet) ---
   const handleAddPelanggan = (newPel: PelangganRow) => {
-    setPelanggan((prev) => [...prev, newPel]);
+    setPelanggan((prev) => prev.some(p => p.noPelanggan === newPel.noPelanggan)
+      ? prev.map(p => p.noPelanggan === newPel.noPelanggan ? newPel : p)
+      : [...prev, newPel]
+    );
   };
 
   const handleReplacePelanggan = (newPelList: PelangganRow[]) => {
@@ -88,7 +118,10 @@ export default function App() {
   };
 
   const handleAddUser = (newUser: UserRow) => {
-    setUsers((prev) => [...prev, newUser]);
+    setUsers((prev) => prev.some(u => u.username.toLowerCase() === newUser.username.toLowerCase())
+      ? prev.map(u => u.username.toLowerCase() === newUser.username.toLowerCase() ? newUser : u)
+      : [...prev, newUser]
+    );
   };
 
   const handleUpdateUser = (updatedUser: UserRow) => {
@@ -101,7 +134,10 @@ export default function App() {
 
   // --- MASTER AREA WRITES ---
   const handleAddArea = (newArea: AreaRow) => {
-    setAreas((prev) => [...prev, newArea]);
+    setAreas((prev) => prev.some(a => a.id.toUpperCase() === newArea.id.toUpperCase())
+      ? prev.map(a => a.id.toUpperCase() === newArea.id.toUpperCase() ? newArea : a)
+      : [...prev, newArea]
+    );
   };
 
   const handleUpdateArea = (updatedArea: AreaRow) => {
@@ -114,7 +150,10 @@ export default function App() {
 
   // --- MASTER TARIF WRITES ---
   const handleAddTarif = (newTarif: TarifRow) => {
-    setTarifs((prev) => [...prev, newTarif]);
+    setTarifs((prev) => prev.some(t => t.id === newTarif.id)
+      ? prev.map(t => t.id === newTarif.id ? newTarif : t)
+      : [...prev, newTarif]
+    );
   };
 
   const handleUpdateTarif = (updatedTarif: TarifRow) => {

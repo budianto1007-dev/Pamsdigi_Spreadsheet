@@ -1713,7 +1713,13 @@ RUNTIME DIAGNOSTIC
         }
         else if (functionName === 'saveArea') {
           const newArea = args as AreaRow;
-          const updatedAreas = [...areas, newArea];
+          if (areas.some(a => a.id.toUpperCase() === newArea.id.toUpperCase())) {
+            const resp = { success: false, message: `Area dengan ID ${newArea.id} sudah ada di database.` };
+            addLog('error', `Returned: ${JSON.stringify(resp)}`);
+            onSuccess(resp);
+            return;
+          }
+          const updatedAreas = [...areas.filter(a => a.id.toUpperCase() !== newArea.id.toUpperCase()), newArea];
           try {
             await pushDataToSheets({
               users, pelanggan, areas: updatedAreas, tarifs, abonemen, denda, readings, billingList, cashTransactions,
@@ -2456,6 +2462,7 @@ RUNTIME DIAGNOSTIC
   // --- SPRINT 2 MASTER OPERATIONS ---
   const handleSaveAreaClick = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     if (!areaInputId.trim() || !areaInputNama.trim()) return;
 
     if (!canPerformAction('ubahMasterData')) {
@@ -6837,11 +6844,11 @@ RUNTIME DIAGNOSTIC
                             />
                           </div>
                           <div className="flex gap-2">
-                            <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg text-xs cursor-pointer">
-                              {areaEditId ? 'Simpan Perubahan' : 'Simpan Dusun Baru'}
+                            <button type="submit" disabled={isLoading} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-1.5 rounded-lg text-xs cursor-pointer">
+                              {isLoading ? 'Menyimpan...' : (areaEditId ? 'Simpan Perubahan' : 'Simpan Dusun Baru')}
                             </button>
                             {areaEditId && (
-                              <button type="button" onClick={() => { setAreaEditId(null); setAreaInputId(''); setAreaInputNama(''); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg text-xs">
+                              <button type="button" disabled={isLoading} onClick={() => { setAreaEditId(null); setAreaInputId(''); setAreaInputNama(''); }} className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 rounded-lg text-xs disabled:opacity-50">
                                 Batal
                               </button>
                             )}

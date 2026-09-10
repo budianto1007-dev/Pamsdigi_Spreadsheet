@@ -172,8 +172,8 @@ export async function authenticateWithSheets(username: string, password: string)
 }
 
 /**
- * Retrieves saved Google Apps Script URL & configuration via Centralized Server & Google Apps Script Properties
- * Strictly single active GAS URL architecture with Global Multi-Device synchronization.
+ * Retrieves saved Google Apps Script URL & configuration from Google Spreadsheet (sheet Konfigurasi)
+ * Prioritizes direct GViz read from sheet 'Konfigurasi' for fast, multi-device global synchronization (1 Link - 1 Spreadsheet).
  */
 export async function getSavedDbConfig(): Promise<{
   gasUrl: string;
@@ -182,11 +182,28 @@ export async function getSavedDbConfig(): Promise<{
   lastConnected: string;
   spreadsheetId: string;
 }> {
-  // Check if this Vercel deployment has an authoritative environment variable (VITE_GAS_URL / VITE_SPREADSHEET_ID)
-  const envUrl = (ENV_GAS_URL && ENV_GAS_URL.startsWith('http')) ? ENV_GAS_URL : '';
-  const localUrl = (typeof window !== 'undefined' ? (localStorage.getItem('pams_google_gas_url') || '').trim() : '');
-  
-  // 1. Poll centralized server config if available
+  // 1. Identify Target Spreadsheet ID from Link (URL Params, Hash), Server Config, or Environment
+  let urlSpreadsheetId = '';
+  let urlGasUrl = '';
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      urlSpreadsheetId = params.get('id') || params.get('sheet') || params.get('spreadsheetId') || '';
+      urlGasUrl = params.get('gas') || params.get('gasUrl') || '';
+      if (!urlSpreadsheetId && window.location.hash) {
+        const hashStr = window.location.hash.replace(/^#\/?/, '');
+        if (hashStr.includes('=')) {
+          const hashParams = new URLSearchParams(hashStr);
+          urlSpreadsheetId = hashParams.get('id') || hashParams.get('sheet') || hashParams.get('spreadsheetId') || '';
+          urlGasUrl = hashParams.get('gas') || hashParams.get('gasUrl') || '';
+        } else if (hashStr.length > 20 && !hashStr.includes('/')) {
+          urlSpreadsheetId = hashStr;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. Poll server config / db_config.json if available
   let serverGasUrl = '';
   let serverSyncStatus = '';
   let serverSpreadsheetName = '';
@@ -198,81 +215,101 @@ export async function getSavedDbConfig(): Promise<{
       .catch(() => fetch('/db_config.json?t=' + Date.now(), { cache: 'no-store' }));
     if (serverRes && serverRes.ok) {
       const sJson = await serverRes.json();
-      if (sJson && sJson.gasUrl && sJson.gasUrl.startsWith('http')) {
-        serverGasUrl = sJson.gasUrl;
-        serverSyncStatus = sJson.syncStatus || 'Connected';
-        serverSpreadsheetName = (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') ? sJson.spreadsheetName : 'Db_pamsdigi';
-        serverLastConnected = sJson.lastConnected || '';
-        serverSpreadsheetId = sJson.spreadsheetId || '';
+      if (sJson) {
+        if (sJson.spreadsheetId) serverSpreadsheetId = sJson.spreadsheetId;
+        if (sJson.gasUrl && sJson.gasUrl.startsWith('http')) serverGasUrl = sJson.gasUrl;
+        if (sJson.syncStatus) serverSyncStatus = sJson.syncStatus;
+        if (sJson.spreadsheetName && sJson.spreadsheetName !== 'PAMSDIGI Spreadsheet') serverSpreadsheetName = sJson.spreadsheetName;
+        if (sJson.lastConnected) serverLastConnected = sJson.lastConnected;
       }
     }
   } catch (_) {}
 
-  // Determine active candidate URL in priority: ENV -> Server API -> Origin localStorage
-  const candidateUrl = envUrl || serverGasUrl || localUrl;
+  const envUrl = (ENV_GAS_URL && ENV_GAS_URL.startsWith('http')) ? ENV_GAS_URL : '';
+  const targetSpreadsheetId = (urlSpreadsheetId || serverSpreadsheetId || ENV_SPREADSHEET_ID || '').trim();
 
-  if (!candidateUrl || !candidateUrl.startsWith('http')) {
-    return {
-      gasUrl: '',
-      spreadsheetName: 'Belum Terhubung',
-      syncStatus: 'Disconnected',
-      lastConnected: 'Belum Terhubung',
-      spreadsheetId: ''
-    };
-  }
+  // 3. PURE GVIZ CONFIGURATION READER:
+  // If targetSpreadsheetId is identified, read tab 'Konfigurasi' directly from Google Spreadsheet via GViz!
+  if (targetSpreadsheetId) {
+    try {
+      const konfigRows = await fetchGvizTab(targetSpreadsheetId, 'Konfigurasi');
+      if (konfigRows && konfigRows.length > 0) {
+        let gvizGasUrl = '';
+        let gvizSpreadsheetName = 'Db_pamsdigi';
+        let gvizSyncStatus: 'Connected' | 'Disconnected' = 'Connected';
+        let gvizLastConnected = '';
+        let gvizSpreadsheetId = targetSpreadsheetId;
 
-  // Poll directly from the Google Apps Script Web App -> sheet 'Konfigurasi'
-  try {
-    const directUrl = `${candidateUrl}${candidateUrl.includes('?') ? '&' : '?'}action=getConfig&t=${Date.now()}`;
-    const directRes = await fetch(directUrl, { method: 'GET', redirect: 'follow' });
-    if (directRes.ok) {
-      const json = await directRes.json();
-      if (json && json.success && json.config) {
-        const cfg = json.config;
-        const status = cfg.syncStatus === 'Connected' ? 'Connected' : 'Disconnected';
-        const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || 'Db_pamsdigi';
-        const sheetName = (rawSheetName && rawSheetName !== 'PAMSDIGI Spreadsheet') ? rawSheetName : 'Db_pamsdigi';
-        const lastConn = cfg.lastConnected || serverLastConnected || new Date().toLocaleString('id-ID');
-        const sheetId = cfg.spreadsheetId || ENV_SPREADSHEET_ID || serverSpreadsheetId || '';
+        for (const row of konfigRows) {
+          const key = String(row[0] || '').trim();
+          const val = String(row[1] || '').trim();
+          if (key === 'gasUrl') gvizGasUrl = val;
+          else if (key === 'spreadsheetName' && val && val !== 'PAMSDIGI Spreadsheet') gvizSpreadsheetName = val;
+          else if (key === 'syncStatus') gvizSyncStatus = val === 'Connected' ? 'Connected' : 'Disconnected';
+          else if (key === 'lastConnected') gvizLastConnected = val;
+          else if (key === 'spreadsheetId' && val) gvizSpreadsheetId = val;
+        }
 
-        if (status === 'Connected') {
+        if (gvizGasUrl && gvizGasUrl.startsWith('http')) {
           return {
-            gasUrl: candidateUrl,
-            spreadsheetName: sheetName,
+            gasUrl: gvizGasUrl,
+            spreadsheetName: gvizSpreadsheetName || serverSpreadsheetName || 'Db_pamsdigi',
             syncStatus: 'Connected',
-            lastConnected: lastConn,
-            spreadsheetId: sheetId
-          };
-        } else {
-          return {
-            gasUrl: candidateUrl,
-            spreadsheetName: 'Belum Terhubung',
-            syncStatus: 'Disconnected',
-            lastConnected: 'Belum Terhubung',
-            spreadsheetId: sheetId
+            lastConnected: gvizLastConnected || serverLastConnected || new Date().toLocaleString('id-ID'),
+            spreadsheetId: gvizSpreadsheetId || targetSpreadsheetId
           };
         }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
 
-  // Fallback: If direct Google Apps Script query failed or timed out, but server API or local config has valid connected info, use it
-  if (serverGasUrl && serverGasUrl === candidateUrl && serverSyncStatus === 'Connected') {
+  // 4. FALLBACK TO DIRECT GOOGLE APPS SCRIPT WEB APP IF SPREADSHEET ID NOT IN LINK YET BUT GAS URL IS KNOWN
+  const candidateGasUrl = (urlGasUrl || envUrl || serverGasUrl || '').trim();
+  if (candidateGasUrl && candidateGasUrl.startsWith('http')) {
+    try {
+      const directUrl = `${candidateGasUrl}${candidateGasUrl.includes('?') ? '&' : '?'}action=getConfig&t=${Date.now()}`;
+      const directRes = await fetch(directUrl, { method: 'GET', redirect: 'follow' });
+      if (directRes.ok) {
+        const json = await directRes.json();
+        if (json && json.success && json.config) {
+          const cfg = json.config;
+          const status = cfg.syncStatus === 'Connected' ? 'Connected' : 'Disconnected';
+          const rawSheetName = cfg.spreadsheetName || serverSpreadsheetName || 'Db_pamsdigi';
+          const sheetName = (rawSheetName && rawSheetName !== 'PAMSDIGI Spreadsheet') ? rawSheetName : 'Db_pamsdigi';
+          const lastConn = cfg.lastConnected || serverLastConnected || new Date().toLocaleString('id-ID');
+          const sheetId = cfg.spreadsheetId || targetSpreadsheetId || '';
+
+          if (status === 'Connected') {
+            return {
+              gasUrl: candidateGasUrl,
+              spreadsheetName: sheetName,
+              syncStatus: 'Connected',
+              lastConnected: lastConn,
+              spreadsheetId: sheetId
+            };
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback: If server API previously stored valid connected state, use it
+  if (serverGasUrl && serverSyncStatus === 'Connected') {
     return {
       gasUrl: serverGasUrl,
       spreadsheetName: serverSpreadsheetName || 'Db_pamsdigi',
       syncStatus: 'Connected',
       lastConnected: serverLastConnected || new Date().toLocaleString('id-ID'),
-      spreadsheetId: serverSpreadsheetId || ''
+      spreadsheetId: serverSpreadsheetId || targetSpreadsheetId || ''
     };
   }
 
   return {
-    gasUrl: candidateUrl,
+    gasUrl: candidateGasUrl || '',
     spreadsheetName: 'Belum Terhubung',
     syncStatus: 'Disconnected',
     lastConnected: 'Belum Terhubung',
-    spreadsheetId: ''
+    spreadsheetId: targetSpreadsheetId || ''
   };
 }
 
@@ -334,7 +371,7 @@ export async function saveGlobalDbConfig(config: {
   const verifiedSheetId = returnedConfig.spreadsheetId || config.spreadsheetId || '';
   const verifiedSheetName = returnedConfig.spreadsheetName || cleanName;
 
-  // Step 2: Simpan status persisten ke localStorage & centralized server API untuk sinkronisasi global multi-device
+  // Step 2: Simpan status persisten ke centralized server API dan update URL untuk sinkronisasi 1 Link - 1 Spreadsheet
   const payloadConfig = {
     gasUrl: cleanGasUrl,
     spreadsheetName: verifiedSheetName,
@@ -343,12 +380,12 @@ export async function saveGlobalDbConfig(config: {
     spreadsheetId: verifiedSheetId
   };
 
-  if (typeof window !== 'undefined') {
+  // Update browser URL query param so the link is immediately 1 Link - 1 Spreadsheet shareable to HP
+  if (typeof window !== 'undefined' && window.history && verifiedSheetId) {
     try {
-      localStorage.setItem('pams_google_gas_url', payloadConfig.gasUrl);
-      localStorage.setItem('pams_db_sync_status', 'Connected');
-      localStorage.setItem('pams_db_sheet_name', payloadConfig.spreadsheetName);
-      localStorage.setItem('pams_google_sheet_id', payloadConfig.spreadsheetId);
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('id', verifiedSheetId);
+      window.history.replaceState({}, '', currentUrl.toString());
     } catch (_) {}
   }
 
@@ -374,17 +411,18 @@ export async function saveGlobalDbConfig(config: {
 export async function disconnectGlobalDbConfig(): Promise<boolean> {
   const currentGasUrl = await getSavedGasUrl();
 
-  // 1. Clear origin storage
-  if (typeof window !== 'undefined') {
+  // Clear query params in browser URL
+  if (typeof window !== 'undefined' && window.history) {
     try {
-      localStorage.removeItem('pams_google_gas_url');
-      localStorage.removeItem('pams_db_sync_status');
-      localStorage.removeItem('pams_db_sheet_name');
-      localStorage.removeItem('pams_google_sheet_id');
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.delete('id');
+      currentUrl.searchParams.delete('sheet');
+      currentUrl.searchParams.delete('gas');
+      window.history.replaceState({}, '', currentUrl.toString());
     } catch (_) {}
   }
 
-  // 2. Update centralized server
+  // Update centralized server
   try {
     await fetch('/api/db-config', {
       method: 'POST',
@@ -399,7 +437,7 @@ export async function disconnectGlobalDbConfig(): Promise<boolean> {
     }).catch(_ => {});
   } catch (_) {}
 
-  // 3. Only reset the specific tenant's GAS URL, never touch other databases
+  // Only reset the specific tenant's GAS URL, never touch other databases
   if (currentGasUrl && currentGasUrl.startsWith('http')) {
     try {
       const directUrl = `${currentGasUrl}${currentGasUrl.includes('?') ? '&' : '?'}&action=resetConfig&syncStatus=Disconnected&t=${Date.now()}`;
@@ -607,19 +645,19 @@ export async function pushDataToSheets(
     cashTransactions: data.cashTransactions || [],
     konfigurasi: mergedKonfig,
     profil: data.profil || {
-      systemNama: localStorage.getItem('pams_system_nama') || 'KPSPAMS DESA MANDIRI',
-      systemNamaDesa: localStorage.getItem('pams_system_nama_desa') || 'Desa Mandiri',
-      systemKecamatan: localStorage.getItem('pams_system_kecamatan') || 'Kecamatan Makmur',
-      systemKabupaten: localStorage.getItem('pams_system_kabupaten') || 'Kabupaten Sejahtera',
-      systemProvinsi: localStorage.getItem('pams_system_provinsi') || 'Provinsi Lestari',
-      systemAlamat: localStorage.getItem('pams_system_alamat') || 'Jl. Raya Desa Mandiri, RT 01/RW 02',
-      systemTelepon: localStorage.getItem('pams_system_hp') || '081234567890',
-      systemEmail: localStorage.getItem('pams_system_email') || 'kpspams.mandiri@desa.go.id',
-      systemKetua: localStorage.getItem('pams_system_ketua') || 'Agus Setiawan',
-      systemBendahara: localStorage.getItem('pams_system_bendahara') || 'Siti Rahayu',
-      systemFooterStruk: localStorage.getItem('pams_system_footer_struk') || 'Terima kasih telah membayar tepat waktu. Air bersih untuk kehidupan yang sehat!',
-      systemLogo: localStorage.getItem('pams_system_logo') || '',
-      systemStempel: localStorage.getItem('pams_system_stempel') || '',
+      systemNama: 'KPSPAMS DESA MANDIRI',
+      systemNamaDesa: 'Desa Mandiri',
+      systemKecamatan: 'Kecamatan Makmur',
+      systemKabupaten: 'Kabupaten Sejahtera',
+      systemProvinsi: 'Provinsi Lestari',
+      systemAlamat: 'Jl. Raya Desa Mandiri, RT 01/RW 02',
+      systemTelepon: '081234567890',
+      systemEmail: 'kpspams.mandiri@desa.go.id',
+      systemKetua: 'Agus Setiawan',
+      systemBendahara: 'Siti Rahayu',
+      systemFooterStruk: 'Terima kasih telah membayar tepat waktu. Air bersih untuk kehidupan yang sehat!',
+      systemLogo: '',
+      systemStempel: '',
     },
   };
 
