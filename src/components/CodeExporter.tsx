@@ -58,7 +58,7 @@ export default function CodeExporter() {
               <div className="mt-2 grid grid-cols-2 gap-1.5 text-[10px] bg-white/80 p-2 rounded-xl border border-indigo-100">
                 <div>
                   <p className="text-slate-400 font-medium">Last Update:</p>
-                  <p className="text-slate-700 font-bold">09 Sept 2026</p>
+                  <p className="text-slate-700 font-bold">10 Sep 2026</p>
                 </div>
                 <div>
                   <p className="text-slate-400 font-medium">Status API:</p>

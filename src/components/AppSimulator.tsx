@@ -8752,11 +8752,11 @@ RUNTIME DIAGNOSTIC
                             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-850/80 grid grid-cols-3 gap-2 text-center shrink-0">
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">API Version</span>
-                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.3.5</span>
+                                <span className="text-xs font-black text-emerald-400 mt-1 block">v2.4.0</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Last Update</span>
-                                <span className="text-xs font-black text-slate-100 mt-1 block">08 Sep 2026</span>
+                                <span className="text-xs font-black text-slate-100 mt-1 block">10 Sep 2026</span>
                               </div>
                               <div>
                                 <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider block">Status</span>
@@ -8769,19 +8769,27 @@ RUNTIME DIAGNOSTIC
                             {/* CHANGE LOG Section */}
                             <div className="bg-slate-950/40 border border-slate-850/50 rounded-xl p-3 space-y-1.5 shrink-0">
                               <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">CHANGE LOG</span>
-                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.3.5)</p>
+                              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Daftar Perubahan API Terbaru (v2.4.0)</p>
                               <div className="space-y-1 text-[10.5px] text-slate-300 font-sans">
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[ELIMINASI RESIDU SCRIPT PROPERTIES]</strong> Menghapus total ketergantungan pada <code>PropertiesService</code> yang sebelumnya menyimpan URL lama di server Google dan menyebabkan URL lama kembali aktif saat operasi CRUD.</span>
+                                  <span><strong>[PERFORMANCE FAST GRANULAR MUTATION]</strong> Endpoint <code>action: saveSheet</code> memungkinkan mutasi data per sheet (Pelanggan, Area, Tarif, Users, dll.) selesai dalam ~0.3 detik tanpa harus menulis ulang seluruh 10 sheet. Menghilangkan delay dan membuat aplikasi instan &amp; bebas lemot.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[PROTEKSI SEL B2 GASURL SHEET KONFIGURASI]</strong> Operasi CRUD (input/delete data, simpan hak akses, atau sinkronisasi background) diproteksi secara ketat sehingga tidak akan pernah menimpa atau merusak URL Apps Script di sheet <code>Konfigurasi</code>.</span>
+                                  <span><strong>[CONCURRENCY GUARD &amp; NON-BLOCKING UI]</strong> Menghapus modal screen freezing "Menghubungkan Spreadsheet..." saat CRUD dan menyematkan proteksi anti-overwrite GViz agar input baru pengguna tidak tertimpa data lama.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[PURE SPREADSHEET SINGLE SOURCE OF TRUTH]</strong> Sel B2 sheet <code>Konfigurasi</code> menjadi satu-satunya tempat penyimpanan URL Web App secara terisolasi penuh (1 Link - 1 Spreadsheet).</span>
+                                  <span><strong>[MULTI-DEVICE 1 LINK 1 SPREADSHEET]</strong> Sinkronisasi ID dan nama database otomatis ke URL dan sheet <code>Konfigurasi</code>, memastikan HP/tablet/PC lain langsung terhubung ke spreadsheet yang sama secara instan.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[PROTEKSI SEL B2 GASURL SHEET KONFIGURASI]</strong> Operasi CRUD (pushAll/saveSheet) tidak akan pernah menimpa sel gasUrl di sheet <code>Konfigurasi</code>.</span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                                  <span><strong>[ELIMINASI RESIDU SCRIPT PROPERTIES]</strong> Menghapus total ketergantungan pada <code>PropertiesService</code> yang sebelumnya menyimpan URL lama di server Google.</span>
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
@@ -8789,23 +8797,7 @@ RUNTIME DIAGNOSTIC
                                 </div>
                                 <div className="flex items-start gap-1.5">
                                   <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[MULTI-TENANT ISOLATED 1 LINK 1 SPREADSHEET]</strong> Menghapus seluruh URL Apps Script dan ID spreadsheet hardcode. Setiap tautan aplikasi terisolasi secara mandiri dan membaca konfigurasi murni dari Sheet <code>Konfigurasi</code> di Google Spreadsheet masing-masing.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[CRUD FULL DATABASE SPREADSHEET]</strong> Seluruh modul transaksi (Users, Pelanggan, Meter, Tagihan, Kas, Profil, Tarif, Abonemen, Denda) tersimpan langsung secara penuh ke Google Spreadsheet.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[GLOBAL SYNC MULTI-DEVICE]</strong> Ketika Superadmin menyambungkan database atau memperbarui konfigurasi di satu perangkat, seluruh device lain langsung tersinkronisasi otomatis secara real-time.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[DYNAMIC HAK AKSES &amp; MENU PERMISSIONS MATRIX]</strong> Mendukung penyimpanan dinamis matriks hak akses operasi dan visibilitas menu ke sheet <code>Konfigurasi</code> di Google Spreadsheet secara global.</span>
-                                </div>
-                                <div className="flex items-start gap-1.5">
-                                  <span className="text-emerald-400 font-bold shrink-0">✓</span>
-                                  <span><strong>[LIVE DYNAMIC SPREADSHEET NAME (Db_pamsdigi)]</strong> Memastikan nama database langsung membaca nama live file Google Spreadsheet (<code>Db_pamsdigi</code>) secara dinamis melalui <code>db.getName()</code> dan menyimpannya ke sheet <code>Konfigurasi</code>.</span>
+                                  <span><strong>[LIVE DYNAMIC SPREADSHEET NAME]</strong> Membaca nama live file Google Spreadsheet (<code>Db_pamsdigi</code>) secara dinamis melalui <code>db.getName()</code> dan menyimpannya ke sheet <code>Konfigurasi</code>.</span>
                                 </div>
                               </div>
                             </div>
